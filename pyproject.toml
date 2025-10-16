@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "robotics-integration-tests"
+version = "1.0.0"
+description = "Internal reusable integration test harness"
+requires-python = ">=3.11"
+dependencies = [
+  "pytest",
+  "testcontainers[postgres,azurite,mqtt]",
+    "azure-storage-blob",
+    "azure-identity",
+    "azure-keyvault-secrets",
+    "pydantic",
+    "pydantic-settings",
+    "loguru",
+    "python-dotenv",
+    "msal",
+    "requests"
+]
+
+[project.optional-dependencies]
+dev = [
+    "black"
+]
+
+[tool.setuptools.packages.find]
+where = ["robotics_integration_tests"]
