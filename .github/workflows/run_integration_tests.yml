@@ -8,6 +8,11 @@ on:
         required: true
         type: string
         default: "latest"
+    secrets:
+        INTEGRATION_TEST_AZURE_CLIENT_SECRET:
+          required: true
+          description: "Azure client secret for the service principal used in integration tests with access to keyvault"
+
   workflow_dispatch:
     inputs:
       lane:
@@ -71,13 +76,12 @@ jobs:
             echo "${safe_name}=$value" >> $GITHUB_ENV
           done
 
-      - name: Checkout internal integration tests repository
+      - name: Checkout armada repository
         uses: actions/checkout@v4
         with:
-          repository: equinor/robotics
+          repository: equinor/armada
           ref: main
           path: ./integration-tests
-          token: ${{ secrets.ROBOTICS_REPO_ACCESS_TOKEN }}
 
       - name: Compose image references
         id: images
