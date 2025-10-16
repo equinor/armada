@@ -1,0 +1,120 @@
+name: Run integration tests
+
+on:
+  workflow_call:
+    inputs:
+      lane:
+        description: "Which lane to run (dev or latest)"
+        required: true
+        type: string
+        default: "latest"
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: "Which lane to run (dev or latest)"
+        required: true
+        type: string
+        default: "latest"
+
+permissions:
+  contents: read
+
+env:
+  KEYVAULT_NAME: FlotillaTestsKv
+  AZURE_TENANT_ID: 3aa4a235-b6e2-48d5-9195-7fcf05b459b0
+  AZURE_CLIENT_ID: 17d7c036-e4ff-4df6-87fd-0d648a36a727
+
+  FLOTILLA_BACKEND_IMAGE: ghcr.io/equinor/flotilla-backend
+  FLOTILLA_BROKER_IMAGE: ghcr.io/equinor/flotilla-broker
+  POSTGRESQL_IMAGE: postgres:16
+  ISAR_ROBOT_IMAGE: ghcr.io/equinor/isar-robot
+  AZURITE_IMAGE: mcr.microsoft.com/azure-storage/azurite:latest
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ env.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.INTEGRATION_TEST_AZURE_CLIENT_SECRET }}","tenantId":"${{ env.AZURE_TENANT_ID }}"}'
+          allow-no-subscriptions: 'true'
+
+      - name: Retrieve secrets from Key Vault
+        id: kv
+        shell: bash
+        run: |
+          echo "Retrieving secrets from Key Vault: $KEYVAULT_NAME"
+
+          # You can list the secret names here
+          secrets=(
+            INTEGRATION-TESTS-CLIENT-SECRET
+            FLOTILLA-MQTT-PASSWORD
+            FLOTILLA-AZURE-CLIENT-SECRET
+            FLOTILLA-BROKER-SERVER-KEY
+            ISAR-AZURE-CLIENT-SECRET
+            ISAR-MQTT-PASSWORD
+          )
+
+          for name in "${secrets[@]}"; do
+            value=$(az keyvault secret show \
+              --vault-name "$KEYVAULT_NAME" \
+              --name "$name" \
+              --query value -o tsv)
+          
+            # Mask the value in any future log output
+            echo "::add-mask::$value"
+          
+            # Replace hyphens with underscores and export to env
+            safe_name="${name//-/_}"
+            echo "${safe_name}=$value" >> $GITHUB_ENV
+          done
+
+      - name: Checkout internal integration tests repository
+        uses: actions/checkout@v4
+        with:
+          repository: equinor/robotics
+          ref: main
+          path: ./integration-tests
+          token: ${{ secrets.ROBOTICS_REPO_ACCESS_TOKEN }}
+
+      - name: Compose image references
+        id: images
+        run: |
+          TAG="${{ inputs.lane }}"
+          echo "flotilla_backend=${{ env.FLOTILLA_BACKEND_IMAGE }}:${TAG}"  >> $GITHUB_OUTPUT
+          echo "flotilla_broker=${{ env.FLOTILLA_BROKER_IMAGE }}:${TAG}"    >> $GITHUB_OUTPUT
+          echo "postgres=${{ env.POSTGRESQL_IMAGE }}"                       >> $GITHUB_OUTPUT
+          echo "isar_robot=${{ env.ISAR_ROBOT_IMAGE }}:${TAG}"              >> $GITHUB_OUTPUT
+          echo "azurite=${{ env.AZURITE_IMAGE }}"                           >> $GITHUB_OUTPUT
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        working-directory: integration-tests
+        run: |
+          pip install -U pip
+          pip install -e .
+
+      - name: Run integration tests with pytest
+        working-directory: integration-tests
+        env:
+          FLOTILLA_BACKEND_IMAGE:           ${{ steps.images.outputs.flotilla_backend }}
+          FLOTILLA_BROKER_IMAGE:            ${{ steps.images.outputs.flotilla_broker }}
+          POSTGRESQL_IMAGE:                 ${{ steps.images.outputs.postgres }}
+          ISAR_ROBOT_IMAGE:                 ${{ steps.images.outputs.isar_robot }}
+          AZURITE_IMAGE:                    ${{ steps.images.outputs.azurite }}
+
+          INTEGRATION_TESTS_CLIENT_SECRET:  ${{ env.INTEGRATION_TESTS_CLIENT_SECRET }}
+          FLOTILLA_MQTT_PASSWORD:           ${{ env.FLOTILLA_MQTT_PASSWORD }}
+          FLOTILLA_AZURE_CLIENT_SECRET:     ${{ env.FLOTILLA_AZURE_CLIENT_SECRET }}
+          FLOTILLA_BROKER_SERVER_KEY:       ${{ env.FLOTILLA_BROKER_SERVER_KEY }}
+          ISAR_AZURE_CLIENT_SECRET:         ${{ env.ISAR_AZURE_CLIENT_SECRET }}
+          ISAR_MQTT_PASSWORD:               ${{ env.ISAR_MQTT_PASSWORD }}
+
+        run: |
+          pytest -s robotics_integration_tests

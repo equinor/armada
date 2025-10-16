@@ -1,0 +1,11 @@
+pytest
+testcontainers[postgres,azurite,mqtt]
+azure-storage-blob
+black
+pydantic
+pydantic-settings
+loguru
+azure-identity
+azure-keyvault-secrets
+msal
+requests
