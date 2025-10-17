@@ -224,15 +224,10 @@ def armada_with_single_robot(armada_without_robots: Armada):
         alias=settings.ISAR_ROBOT_ALIAS,
     ) as isar_robot:
 
-        try:
-            wait_for_robot_to_be_populated_in_database(
-                backend_url=armada.flotilla_backend.backend_url,
-                robot_name=settings.ISAR_ROBOT_NAME,
-            )
-        except RuntimeError:
-            logger.exception("Hit a runtime error boys")
-            while True:
-                time.sleep(1)
+        wait_for_robot_to_be_populated_in_database(
+            backend_url=armada.flotilla_backend.backend_url,
+            robot_name=settings.ISAR_ROBOT_NAME,
+        )
 
         robot: Dict = get_robot_by_name(
             backend_url=armada.flotilla_backend.backend_url,
