@@ -2,7 +2,7 @@
 Repository for integration tests of the Equinor Flotilla robotics system. The term armada points to the integration tests deploying a large number of containers beyond the ones provided by Flotilla to perform full integration tests.
 
 ## Purpose
-The integration tests shall replicate normal operation and error situations that can occurr for a robot mission in Flotilla and determine whether the system handles the situation as expected. Whenever changes are made to the system, the integration tests will execute to verify that the bahvior remains consistent.
+The integration tests shall replicate normal operation and error situations that can occur for a robot mission in Flotilla and determine whether the system handles the situation as expected. Whenever changes are made to the system, the integration tests will execute to verify that the behavior remains consistent.
 
 The following components are currently included in the integration tests:
 
@@ -74,7 +74,7 @@ ISAR_AZURE_CLIENT_SECRET
 ISAR_MQTT_PASSWORD
 ```
 
-They may all be found in the integration test [keyvualt](https://portal.azure.com/#@StatoilSRM.onmicrosoft.com/resource/subscriptions/c389567b-2dd0-41fa-a5da-d86b81f80bda/resourceGroups/FlotillaIntegrationTests/providers/Microsoft.KeyVault/vaults/FlotillaTestsKv/overview).
+They may all be found in the integration test [keyvault](https://portal.azure.com/#@StatoilSRM.onmicrosoft.com/resource/subscriptions/c389567b-2dd0-41fa-a5da-d86b81f80bda/resourceGroups/FlotillaIntegrationTests/providers/Microsoft.KeyVault/vaults/FlotillaTestsKv/overview).
 
 You may now run the tests with
 
