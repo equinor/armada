@@ -22,7 +22,7 @@ def create_postgres_container(network: Network) -> PostgresContainer:
             dbname=settings.DB_ALIAS,
         )
         .with_name(settings.DB_ALIAS)
-        .with_bind_ports(5432, 5432)
+        .with_exposed_ports(5432)
         .with_network(network)
         .with_network_aliases(settings.DB_ALIAS)
     )
