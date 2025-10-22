@@ -1,0 +1,32 @@
+# A GitHub Action to synchronize labels across multiple repositories which all 
+# should use the labels defined in .github/labels/labels.yml.
+
+name: Synchronize labels
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    secrets:
+      LABEL_SYNC_TOKEN:
+        required: true
+        description: "GitHub token with permission to manage labels (contents: read, issues: write)"
+
+jobs:
+  labeler:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          repository: equinor/armada
+          ref: main
+      - name: Synchronize labels
+        uses: crazy-max/ghaction-github-labeler@v5
+        with:
+          github-token: ${{ secrets.LABEL_SYNC_TOKEN }}
+          yaml-file: .github/labels/labels.yml
+          exclude: |
+            backend
+            frontend
+            action
+            database-change
