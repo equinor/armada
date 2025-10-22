@@ -30,6 +30,7 @@ def create_isar_robot_container(
     name: str = "isar_robot",
     port: int = 3000,
     alias: str = "isar_robot",
+    should_fail_normal_task: bool = False,
 ) -> StreamLoggingDockerContainer:
 
     container: StreamLoggingDockerContainer = (
@@ -51,5 +52,9 @@ def create_isar_robot_container(
         .with_env("ISAR_PLANT_SHORT_NAME", "HUA")
         .with_env("ISAR_KEYVAULT_NAME", "FlotillaTestsKv")
         .with_env("ISAR_API_HOST_VIEWED_EXTERNALLY", "isar_robot")
+        .with_env(
+            "ROBOT_MISSION_SIMULATION_SHOULD_FAIL_NORMAL_TASK", should_fail_normal_task
+        )
+        .with_env("ROBOT_MISSION_SIMULATION_TASK_FAILURE_PROBABILITY", 0.0)
     )
     return container

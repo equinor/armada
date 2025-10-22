@@ -38,14 +38,10 @@ from robotics_integration_tests.custom_containers.stream_logging_docker_containe
 )
 from robotics_integration_tests.settings.settings import settings
 from robotics_integration_tests.utilities.flotilla_backend_api import (
+    setup_robot_in_flotilla,
     wait_for_backend_to_be_responsive,
     populate_database_with_minimum_models,
     wait_for_database_to_be_populated,
-    wait_for_robot_to_be_populated_in_database,
-    get_robot_by_name,
-    get_inspection_area_id_for_installation,
-    set_current_inspection_area_for_robot,
-    wait_for_inspection_area_to_be_updated_on_robot,
 )
 from robotics_integration_tests.utilities.keyvault import Keyvault
 
@@ -213,7 +209,7 @@ def armada_without_robots(
 
 
 @pytest.fixture
-def armada_with_single_robot(armada_without_robots: Armada):
+def armada_with_single_successful_robot(armada_without_robots: Armada):
     armada: Armada = armada_without_robots
 
     with create_isar_robot_container(
@@ -224,32 +220,9 @@ def armada_with_single_robot(armada_without_robots: Armada):
         alias=settings.ISAR_ROBOT_ALIAS,
     ) as isar_robot:
 
-        wait_for_robot_to_be_populated_in_database(
+        robot_id, installation_code_for_robot = setup_robot_in_flotilla(
             backend_url=armada.flotilla_backend.backend_url,
             robot_name=settings.ISAR_ROBOT_NAME,
-        )
-
-        robot: Dict = get_robot_by_name(
-            backend_url=armada.flotilla_backend.backend_url,
-            name=settings.ISAR_ROBOT_NAME,
-        )
-        installation_code_for_robot: str = robot.get("currentInstallation").get(
-            "installationCode"
-        )
-        robot_id: str = robot.get("id")
-
-        inspection_area_id: str = get_inspection_area_id_for_installation(
-            backend_url=armada.flotilla_backend.backend_url,
-            installation_code=installation_code_for_robot,
-        )
-
-        set_current_inspection_area_for_robot(
-            backend_url=armada.flotilla_backend.backend_url,
-            inspection_area_id=inspection_area_id,
-            robot_id=robot_id,
-        )
-        wait_for_inspection_area_to_be_updated_on_robot(
-            backend_url=armada.flotilla_backend.backend_url, robot_id=robot_id
         )
 
         armada.robots[settings.ISAR_ROBOT_NAME] = IsarRobot(
@@ -260,14 +233,35 @@ def armada_with_single_robot(armada_without_robots: Armada):
             alias=settings.ISAR_ROBOT_ALIAS,
             installation_code=installation_code_for_robot,
         )
+        armada.log_startup_info()
+        yield armada
 
-        logger.info("Armada has been deployed")
-        logger.info(
-            f"Broker exposed port is {armada.flotilla_broker.broker.get_exposed_port(1883)}"
-        )
-        logger.info(
-            f"Backend exposed port is {armada.flotilla_backend.container.get_exposed_port(8000)}"
-        )
-        logger.info(f"ISAR Robot exposed port is {isar_robot.get_exposed_port(3000)}")
 
+@pytest.fixture
+def armada_with_single_failing_robot(armada_without_robots: Armada):
+    armada: Armada = armada_without_robots
+
+    with create_isar_robot_container(
+        network=armada.network,
+        image=settings.ISAR_ROBOT_IMAGE,
+        name=settings.ISAR_ROBOT_NAME,
+        port=settings.ISAR_ROBOT_PORT,
+        alias=settings.ISAR_ROBOT_ALIAS,
+        should_fail_normal_task=True,
+    ) as isar_robot:
+
+        robot_id, installation_code_for_robot = setup_robot_in_flotilla(
+            backend_url=armada.flotilla_backend.backend_url,
+            robot_name=settings.ISAR_ROBOT_NAME,
+        )
+
+        armada.robots[settings.ISAR_ROBOT_NAME] = IsarRobot(
+            container=isar_robot,
+            name=settings.ISAR_ROBOT_NAME,
+            robot_id=robot_id,
+            port=settings.ISAR_ROBOT_PORT,
+            alias=settings.ISAR_ROBOT_ALIAS,
+            installation_code=installation_code_for_robot,
+        )
+        armada.log_startup_info()
         yield armada
