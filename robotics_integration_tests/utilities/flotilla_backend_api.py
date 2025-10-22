@@ -338,6 +338,37 @@ def wait_for_database_to_be_populated(backend_url: str, timeout: int = 60) -> No
             return
 
 
+def setup_robot_in_flotilla(backend_url: str, robot_name: str) -> Tuple[str, str]:
+
+    wait_for_robot_to_be_populated_in_database(
+        backend_url=backend_url,
+        robot_name=robot_name,
+    )
+    robot: Dict = get_robot_by_name(
+        backend_url=backend_url,
+        name=robot_name,
+    )
+    installation_code_for_robot: str = robot.get("currentInstallation").get(
+        "installationCode"
+    )
+    robot_id: str = robot.get("id")
+
+    inspection_area_id: str = get_inspection_area_id_for_installation(
+        backend_url=backend_url,
+        installation_code=installation_code_for_robot,
+    )
+
+    set_current_inspection_area_for_robot(
+        backend_url=backend_url,
+        inspection_area_id=inspection_area_id,
+        robot_id=robot_id,
+    )
+    wait_for_inspection_area_to_be_updated_on_robot(
+        backend_url=backend_url, robot_id=robot_id
+    )
+    return robot_id, installation_code_for_robot
+
+
 def wait_for_inspection_area_to_be_updated_on_robot(
     backend_url: str, robot_id: str, timeout: int = 60
 ) -> None:

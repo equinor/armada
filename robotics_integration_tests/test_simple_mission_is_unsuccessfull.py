@@ -3,10 +3,6 @@ from typing import Dict
 from loguru import logger
 
 from robotics_integration_tests.armada import Armada
-from robotics_integration_tests.settings.settings import settings
-from robotics_integration_tests.utilities.blob_storage import (
-    wait_until_all_expected_files_uploaded,
-)
 from robotics_integration_tests.utilities.flotilla_backend_api import (
     schedule_echo_mission,
     wait_for_mission_run_status,
@@ -14,10 +10,10 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
 )
 
 
-def test_simple_mission_with_three_tags_is_successful(
-    armada_with_single_successful_robot: Armada,
+def test_simple_mission_with_three_tags_is_unsuccessful(
+    armada_with_single_failing_robot: Armada,
 ) -> None:
-    armada: Armada = armada_with_single_successful_robot
+    armada: Armada = armada_with_single_failing_robot
     robot_name, robot = next(iter(armada.robots.items()))
     echo_mission_id: str = "986"
 
@@ -36,15 +32,7 @@ def test_simple_mission_with_three_tags_is_successful(
     _ = wait_for_mission_run_status(
         backend_url=armada.flotilla_backend.backend_url,
         mission_run_id=mission_run_id,
-        expected_status="Successful",
-    )
-
-    wait_until_all_expected_files_uploaded(
-        container_name=robot.installation_code.lower(),
-        connection_string=armada.flotilla_storage.azurite_containers.get(
-            settings.SARA_RAW_STORAGE_CONTAINER
-        ).host_connection_string,
-        expected_file_count=len(mission_run.get("tasks")),
+        expected_status="Failed",
     )
 
     _ = wait_for_robot_status(
