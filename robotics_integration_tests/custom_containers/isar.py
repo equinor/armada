@@ -56,5 +56,6 @@ def create_isar_robot_container(
             "ROBOT_MISSION_SIMULATION_SHOULD_FAIL_NORMAL_TASK", should_fail_normal_task
         )
         .with_env("ROBOT_MISSION_SIMULATION_TASK_FAILURE_PROBABILITY", 0.0)
+        .with_env("ROBOT_MISSION_SIMULATION_MISSION_COMPLETION_DELAY", 5)
     )
     return container

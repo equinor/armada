@@ -470,6 +470,45 @@ def wait_for_mission_run_status(
             continue
 
 
+def wait_for_second_task_status_of_mission_run(
+    backend_url: str, mission_run_id: str, expected_status: str, timeout: int = 60
+) -> Dict:
+    start_time: datetime = datetime.now()
+    while True:
+        if datetime.now() - start_time > timedelta(seconds=timeout):
+            raise RuntimeError(
+                f"Second task in mission with ID '{mission_run_id}' did not reach status '{expected_status}' within the given timeout "
+                f"{timeout} seconds"
+            )
+
+        try:
+            mission_run: Dict = get_mission_run_by_id(
+                backend_url=backend_url, mission_run_id=mission_run_id
+            )
+        except Exception:
+            logger.warning(
+                f"Failed to retrieve mission run with ID {mission_run_id}, most likely because it has not been written "
+                f"to the database yet, will retry..."
+            )
+            time.sleep(1)
+            continue
+
+        tasks: List = mission_run.get("tasks")
+        first_task_status: str = tasks[1].get("status")
+        if first_task_status == expected_status:
+            logger.info(
+                f"Second task in mission with ID '{mission_run_id}' has reached expected status '{expected_status}'"
+            )
+            return tasks[1]
+        else:
+            logger.info(
+                f"Second task in mission run with ID '{mission_run_id}' is in status '{first_task_status}', "
+                f"waiting for status '{expected_status}'"
+            )
+            time.sleep(1)
+            continue
+
+
 def wait_for_robot_status(
     backend_url: str, robot_name: str, expected_status: str, timeout: int = 60
 ) -> Dict:
@@ -501,3 +540,45 @@ def wait_for_robot_status(
             )
             time.sleep(1)
             continue
+
+
+def pause_mission(backend_url: str, robot_id: str) -> None:
+    url: str = f"{backend_url}/robots/{robot_id}/pause"
+    response: Response = requests.post(
+        url,
+        headers=_add_headers(),
+    )
+    if not response.ok:
+        body = response.text
+        try:
+            problem = response.json()
+        except Exception:
+            problem = None
+        raise AssertionError(
+            f"POST {url} returned {response.status_code}\n"
+            f"Response headers: {dict(response.headers)}\n"
+            f"Response body:\n{body}\n"
+            f"Parsed JSON (if any):\n{problem}"
+        )
+    response.raise_for_status()
+
+
+def resume_mission(backend_url: str, robot_id: str) -> None:
+    url = str(f"{backend_url}/robots/{robot_id}/resume")
+    response: Response = requests.post(
+        url,
+        headers=_add_headers(),
+    )
+    if not response.ok:
+        body = response.text
+        try:
+            problem = response.json()
+        except Exception:
+            problem = None
+        raise AssertionError(
+            f"POST {url} returned {response.status_code}\n"
+            f"Response headers: {dict(response.headers)}\n"
+            f"Response body:\n{body}\n"
+            f"Parsed JSON (if any):\n{problem}"
+        )
+    response.raise_for_status()
