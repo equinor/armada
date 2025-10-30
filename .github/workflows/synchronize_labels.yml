@@ -4,7 +4,6 @@
 name: Synchronize labels
 
 on:
-  workflow_dispatch:
   workflow_call:
     secrets:
       LABEL_SYNC_TOKEN:
