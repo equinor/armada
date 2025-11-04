@@ -43,7 +43,7 @@ def test_simple_mission_pausing_and_resuming_successfully(
     )
 
     pause_mission(
-        backend_url=armada.flotilla_backend.backend_url, robotId=robot.robot_id
+        backend_url=armada.flotilla_backend.backend_url, robot_id=robot.robot_id
     )
     logger.info(f"Paused mission run {mission_run_id} on robot {robot_name}")
 
@@ -54,7 +54,7 @@ def test_simple_mission_pausing_and_resuming_successfully(
     )
 
     resume_mission(
-        backend_url=armada.flotilla_backend.backend_url, robotId=robot.robot_id
+        backend_url=armada.flotilla_backend.backend_url, robot_id=robot.robot_id
     )
     logger.info(f"Resumed mission run {mission_run_id} on robot {robot_name}")
 
