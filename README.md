@@ -79,5 +79,5 @@ They may all be found in the integration test [keyvault](https://portal.azure.co
 You may now run the tests with
 
 ```bash
-pytest -s -n 10 .
+pytest -s .
 ```
