@@ -5,7 +5,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 ENV PATH="/root/.dotnet/tools:${PATH}"
-RUN dotnet tool install -g dotnet-ef
+RUN dotnet tool install -g dotnet-ef --version 8.0.0
 
 WORKDIR /work
 
