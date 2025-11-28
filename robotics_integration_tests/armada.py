@@ -23,7 +23,7 @@ class Armada:
         self.flotilla_storage: FlotillaStorage | None = None
         self.robots: Dict[str, IsarRobot] = {}
 
-    def log_startup_info(self):
+    def log_startup_info(self) -> None:
         logger.info("Armada has been deployed")
         logger.info(
             f"Broker exposed port is {self.flotilla_broker.broker.get_exposed_port(1883)}"
