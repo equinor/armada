@@ -60,7 +60,7 @@ The input `lane` determines which image tag should be applied to the internally 
 ## Local development
 Clone the repository and install the packages in your virtual environment.
 ```bash
-pip install robotics_integration_tests/requirements.txt
+pip install -r robotics_integration_tests/requirements.txt
 ```
 
 Ensure the following secrets are populated in your local environment, either as environment variables or in a .env file in the repository root directory. 
