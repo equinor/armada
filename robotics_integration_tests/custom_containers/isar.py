@@ -52,6 +52,7 @@ def create_isar_robot_container(
         .with_env("ISAR_PLANT_SHORT_NAME", "HUA")
         .with_env("ISAR_KEYVAULT_NAME", "FlotillaTestsKv")
         .with_env("ISAR_API_HOST_VIEWED_EXTERNALLY", "isar_robot")
+        .with_env("MISSION_SIMULATION_TIME_TO_START", 2)
         .with_env(
             "ROBOT_MISSION_SIMULATION_SHOULD_FAIL_NORMAL_TASK", should_fail_normal_task
         )
