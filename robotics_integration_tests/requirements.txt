@@ -1,5 +1,6 @@
 pytest
 pytest-xdist
+testcontainers
 testcontainers[postgres,azurite,mqtt]
 azure-storage-blob
 black
