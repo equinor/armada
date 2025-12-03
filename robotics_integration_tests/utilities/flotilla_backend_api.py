@@ -191,6 +191,15 @@ def add_installation_to_database(
     )
     response.raise_for_status()
 
+def add_robot_model_to_database(
+    backend_url: str
+) -> None:
+    response: Response = requests.post(
+        f"{backend_url}/robot-models",
+        json={"robotType": "Robot"},
+        headers=_add_headers(),
+    )
+    response.raise_for_status()
 
 def wait_for_backend_to_be_responsive(backend_url: str, timeout: int = 60) -> None:
     start_time: datetime = datetime.now()
@@ -209,7 +218,7 @@ def wait_for_backend_to_be_responsive(backend_url: str, timeout: int = 60) -> No
             time.sleep(1)
             continue
 
-        if len(robot_models) == 7:  # Number of default robot models in database
+        if len(robot_models) >= 0:
             logger.info("Backend is responsive")
             return
 
@@ -267,6 +276,8 @@ default_access_roles: List[Tuple[str, str, str]] = [
 
 
 def populate_database_with_minimum_models(backend_url: str) -> None:
+    add_robot_model_to_database(backend_url=backend_url)
+
     for installation_code, name in default_installations:
         add_installation_to_database(
             backend_url=backend_url, installation_code=installation_code, name=name
