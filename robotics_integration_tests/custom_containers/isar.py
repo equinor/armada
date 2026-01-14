@@ -32,7 +32,7 @@ def create_isar_robot_container(
     alias: str = "isar_robot",
     should_fail_normal_task: bool = False,
 ) -> StreamLoggingDockerContainer:
-    
+
     failure_prob = 0.0
     if should_fail_normal_task:
         failure_prob = 1.0
