@@ -33,7 +33,9 @@ def create_azurite_container(
     network: Network, name: str = "azurite"
 ) -> StreamLoggingDockerContainer:
     # Command binds services to 0.0.0.0 so Docker can map ports
-    cmd: str = "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0"
+    cmd: str = (
+        "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --skipApiVersionCheck"
+    )
 
     container: StreamLoggingDockerContainer = (
         StreamLoggingDockerContainer(image=settings.AZURITE_IMAGE, command=cmd)
