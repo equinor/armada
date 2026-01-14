@@ -159,7 +159,9 @@ def flotilla_broker(network: Network):
         port=settings.FLOTILLA_BROKER_PORT,
         alias=settings.FLOTILLA_BROKER_ALIAS,
     ) as broker:
-        wait_for_port_mapping_to_be_available(container=broker, port=settings.FLOTILLA_BROKER_PORT)
+        wait_for_port_mapping_to_be_available(
+            container=broker, port=settings.FLOTILLA_BROKER_PORT
+        )
 
         yield FlotillaBroker(
             broker=broker,
@@ -179,8 +181,10 @@ def flotilla_backend(network: Network, flotilla_database: FlotillaDatabase):
         port=settings.FLOTILLA_BACKEND_PORT,
         alias=settings.FLOTILLA_BACKEND_ALIAS,
     ) as flotilla_backend:
-        wait_for_port_mapping_to_be_available(container=flotilla_backend, port=settings.FLOTILLA_BACKEND_PORT)
-        
+        wait_for_port_mapping_to_be_available(
+            container=flotilla_backend, port=settings.FLOTILLA_BACKEND_PORT
+        )
+
         backend_url: str = f"http://localhost:{flotilla_backend.get_exposed_port(8000)}"
         wait_for_backend_to_be_responsive(backend_url=backend_url)
         populate_database_with_minimum_models(backend_url=backend_url)
@@ -274,17 +278,22 @@ def armada_with_single_failing_robot(armada_without_robots: Armada):
         armada.log_startup_info()
         yield armada
 
-def wait_for_port_mapping_to_be_available(container: DockerContainer, port: int, timeout: int = 60, delay: int = 2) -> None:
+
+def wait_for_port_mapping_to_be_available(
+    container: DockerContainer, port: int, timeout: int = 60, delay: int = 2
+) -> None:
     now: datetime = datetime.now()
     while (datetime.now() - now).seconds < timeout:
         try:
             container.get_exposed_port(port)
             return
         except ConnectionError:
-            logger.warning(f"Port {port} not yet available, waiting for {delay} seconds...")
+            logger.warning(
+                f"Port {port} not yet available, waiting for {delay} seconds..."
+            )
             time.sleep(delay)
             continue
 
-    raise ConnectionError(f"Port mapping for container {container.image} on port {port} not available within timeout")
-
-
+    raise ConnectionError(
+        f"Port mapping for container {container.image} on port {port} not available within timeout"
+    )
