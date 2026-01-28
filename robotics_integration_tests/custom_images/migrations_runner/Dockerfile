@@ -1,11 +1,11 @@
-FROM mcr.microsoft.com/dotnet/sdk:8.0
+FROM mcr.microsoft.com/dotnet/sdk:10.0
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git ca-certificates postgresql-client \
- && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends git ca-certificates postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV PATH="/root/.dotnet/tools:${PATH}"
-RUN dotnet tool install -g dotnet-ef --version 8.0.0
+RUN dotnet tool install -g dotnet-ef --version 10.0.0
 
 WORKDIR /work
 
