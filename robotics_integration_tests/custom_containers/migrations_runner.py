@@ -26,7 +26,7 @@ def create_migrations_runner_container(
         .with_env("AZURE_CLIENT_ID", settings.FLOTILLA_AZURE_CLIENT_ID)
         .with_env("AZURE_TENANT_ID", settings.AZURE_TENANT_ID)
         .with_env("GIT_REPO", settings.GIT_REPOSITORY_FOR_MIGRATIONS)
-        .with_env("GIT_REF", "main")
+        .with_env("GIT_REF", settings.GIT_REPOSITORY_FOR_MIGRATIONS_REF)
         .with_env("EF_PROJECT_PATH", settings.BACKEND_PROJECT_FILE_FOLDER)
         .with_env("EF_STARTUP_PATH", settings.BACKEND_PROJECT_FILE_FOLDER)
     )

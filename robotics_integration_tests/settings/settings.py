@@ -54,9 +54,8 @@ class Settings(BaseSettings):
     DB_PASSWORD: str = Field(default="default_password")
     DB_ALIAS: str = Field(default="postgres_database")
 
-    GIT_REPOSITORY_FOR_MIGRATIONS: str = Field(
-        default="https://github.com/equinor/flotilla"
-    )
+    GIT_REPOSITORY_FOR_MIGRATIONS: str = Field(default="equinor/flotilla")
+    GIT_REPOSITORY_FOR_MIGRATIONS_REF: str = Field(default="latest")
     BACKEND_PROJECT_FILE_FOLDER: str = Field(default="backend/api")
 
     # Migrations runner environment
