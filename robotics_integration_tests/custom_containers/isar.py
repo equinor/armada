@@ -30,6 +30,8 @@ def create_isar_robot_container(
     name: str = "isar_robot",
     port: int = 3000,
     alias: str = "isar_robot",
+    blob_storage_connection_string_data: str = "",
+    blob_storage_connection_string_metadata: str = "",
     should_fail_normal_task: bool = False,
 ) -> StreamLoggingDockerContainer:
 
@@ -51,11 +53,18 @@ def create_isar_robot_container(
         .with_env("ISAR_AZURE_TENANT_ID", settings.ISAR_AZURE_TENANT_ID)
         .with_env("ISAR_STORAGE_BLOB_ENABLED", "true")
         .with_env("ISAR_BLOB_STORAGE_ACCOUNT_DATA", settings.AZURITE_ACCOUNT)
+        .with_env(
+            "ISAR_BLOB_STORAGE_CONNECTION_STRING_DATA",
+            blob_storage_connection_string_data,
+        )
         .with_env("ISAR_BLOB_STORAGE_ACCOUNT_METADATA", settings.AZURITE_ACCOUNT)
+        .with_env(
+            "ISAR_BLOB_STORAGE_CONNECTION_STRING_METADATA",
+            blob_storage_connection_string_metadata,
+        )
         .with_env("ISAR_BLOB_CONTAINER", "hua")
         .with_env("ISAR_PLANT_CODE", "Huldra")
         .with_env("ISAR_PLANT_SHORT_NAME", "HUA")
-        .with_env("ISAR_KEYVAULT_NAME", "FlotillaTestsKv")
         .with_env("ISAR_API_HOST_VIEWED_EXTERNALLY", "isar_robot")
         .with_env("MISSION_SIMULATION_TIME_TO_START", 2)
         .with_env("ROBOT_MISSION_SIMULATION_TASK_FAILURE_PROBABILITY", failure_prob)

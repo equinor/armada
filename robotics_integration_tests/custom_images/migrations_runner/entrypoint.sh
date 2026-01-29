@@ -5,8 +5,8 @@ set -euo pipefail
 : "${DATABASE_URL:?DATABASE_URL must be set, e.g. postgresql://user:pwd@host:5432/mydb}"
 
 # Optional inputs
-GIT_REPO="${GIT_REPO:-https://github.com/equinor/flotilla}"
-GIT_REF="${GIT_REF:-main}"
+GIT_REPO="${GIT_REPO:-equinor/flotilla}"
+GIT_REF="${GIT_REF:-latest}"
 EF_PROJECT_PATH="${EF_PROJECT_PATH:-backend/api}"
 EF_STARTUP_PATH="${EF_STARTUP_PATH:-$EF_PROJECT_PATH}"
 EF_CONTEXT="${EF_CONTEXT:-}"
@@ -19,7 +19,12 @@ WAIT_FOR_DB_TIMEOUT="${WAIT_FOR_DB_TIMEOUT:-60}"
 
 echo "Cloning $GIT_REPO @ $GIT_REF ..."
 rm -rf /work/repo
-git clone --depth 1 --branch "$GIT_REF" "$GIT_REPO" /work/repo
+if [ "$GIT_REF" = "latest" ]; then
+  GIT_REF=$(curl -s ${GITHUB_TOKEN:+-H "Authorization: token $GITHUB_TOKEN"} \
+    "https://api.github.com/repos/$GIT_REPO/releases/latest" | jq -r .tag_name)
+  echo "Resolved latest to $GIT_REF"
+fi
+git clone --depth 1 --branch "$GIT_REF" "https://github.com/$GIT_REPO" /work/repo
 
 cd /work/repo
 
