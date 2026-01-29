@@ -223,13 +223,18 @@ def armada_without_robots(
 @pytest.fixture
 def armada_with_single_successful_robot(armada_without_robots: Armada):
     armada: Armada = armada_without_robots
-
     with create_isar_robot_container(
         network=armada.network,
         image=settings.ISAR_ROBOT_IMAGE,
         name=settings.ISAR_ROBOT_NAME,
         port=settings.ISAR_ROBOT_PORT,
         alias=settings.ISAR_ROBOT_ALIAS,
+        blob_storage_connection_string_data=armada.keyvault.get_secret(
+            "AZURE-STORAGE-CONNECTION-STRING-DATA"
+        ).value,
+        blob_storage_connection_string_metadata=armada.keyvault.get_secret(
+            "AZURE-STORAGE-CONNECTION-STRING-METADATA"
+        ).value,
     ) as isar_robot:
 
         robot_id, installation_code_for_robot = setup_robot_in_flotilla(
@@ -259,6 +264,12 @@ def armada_with_single_failing_robot(armada_without_robots: Armada):
         name=settings.ISAR_ROBOT_NAME,
         port=settings.ISAR_ROBOT_PORT,
         alias=settings.ISAR_ROBOT_ALIAS,
+        blob_storage_connection_string_data=armada.keyvault.get_secret(
+            "AZURE-STORAGE-CONNECTION-STRING-DATA"
+        ).value,
+        blob_storage_connection_string_metadata=armada.keyvault.get_secret(
+            "AZURE-STORAGE-CONNECTION-STRING-METADATA"
+        ).value,
         should_fail_normal_task=True,
     ) as isar_robot:
 
