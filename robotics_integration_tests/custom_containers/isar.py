@@ -45,7 +45,6 @@ def create_isar_robot_container(
         .with_exposed_ports(port)
         .with_network(network)
         .with_network_aliases(alias)
-        .with_env("ISAR_MQTT_ENABLED", "true")
         .with_env("ISAR_MQTT_HOST", settings.FLOTILLA_BROKER_ALIAS)
         .with_env("ISAR_MQTT_PASSWORD", settings.ISAR_MQTT_PASSWORD)
         .with_env("AZURE_CLIENT_SECRET", settings.ISAR_AZURE_CLIENT_SECRET)
