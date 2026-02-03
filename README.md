@@ -63,7 +63,7 @@ Clone the repository and install the packages in your virtual environment.
 pip install -r robotics_integration_tests/requirements.txt
 ```
 
-Ensure the following secrets are populated in your local environment, either as environment variables or in a .env file in the repository root directory. 
+Ensure the following secrets are populated in your local environment, either as environment variables or in a .env file in the repository root directory.
 
 ```
 INTEGRATION_TESTS_CLIENT_SECRET
@@ -72,6 +72,8 @@ FLOTILLA_BROKER_SERVER_KEY
 FLOTILLA_MQTT_PASSWORD
 ISAR_AZURE_CLIENT_SECRET
 ISAR_MQTT_PASSWORD
+SARA_AZURE_CLIENT_SECRET
+SARA_MQTT_PASSWORD
 ```
 
 They may all be found in the integration test [keyvault](https://portal.azure.com/#@StatoilSRM.onmicrosoft.com/resource/subscriptions/c389567b-2dd0-41fa-a5da-d86b81f80bda/resourceGroups/FlotillaIntegrationTests/providers/Microsoft.KeyVault/vaults/FlotillaTestsKv/overview).

@@ -37,12 +37,15 @@ def create_azurite_container(
         "azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --skipApiVersionCheck"
     )
 
+    accounts = f"{settings.AZURITE_ACCOUNT}:{settings.AZURITE_KEY}"
+
     container: StreamLoggingDockerContainer = (
         StreamLoggingDockerContainer(image=settings.AZURITE_IMAGE, command=cmd)
         .with_name(name)
         .with_network(network)
         .with_network_aliases(name)
         .with_exposed_ports(10000)
+        .with_env("AZURITE_ACCOUNTS", accounts)
     )
     return container
 
