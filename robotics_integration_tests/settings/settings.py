@@ -48,15 +48,26 @@ class Settings(BaseSettings):
     FLOTILLA_BROKER_IMAGE: str = Field(default="ghcr.io/equinor/flotilla-broker:latest")
     FLOTILLA_BROKER_PORT: int = Field(default=1883)
 
-    # PostgreSQL Database environment
+    # PostgreSQL Flotilla Database environment
     POSTGRESQL_IMAGE: str = Field(default="postgres:16")
     DB_USER: str = Field(default="flotilla")
     DB_PASSWORD: str = Field(default="default_password")
-    DB_ALIAS: str = Field(default="postgres_database")
+    DB_ALIAS: str = Field(default="flotilla_postgres_database")
 
     GIT_REPOSITORY_FOR_MIGRATIONS: str = Field(default="equinor/flotilla")
     GIT_REPOSITORY_FOR_MIGRATIONS_REF: str = Field(default="latest")
     BACKEND_PROJECT_FILE_FOLDER: str = Field(default="backend/api")
+
+    # PostgreSQL Sara Database environment
+    POSTGRESQL_IMAGE: str = Field(default="postgres:16")
+    SARA_DB_USER: str = Field(default="sara")
+    SARA_DB_PASSWORD: str = Field(default="default_password")
+    SARA_DB_ALIAS: str = Field(default="sara_postgres_database")
+
+    SARA_GIT_REPOSITORY_FOR_MIGRATIONS: str = Field(default="equinor/sara")
+    SARA_GIT_REPOSITORY_FOR_MIGRATIONS_REF: str = Field(default="latest")
+
+    SARA_BACKEND_PROJECT_FILE_FOLDER: str = Field(default="api")
 
     # Migrations runner environment
     RELATIVE_PATH_TO_DOCKERFILE: str = Field(
@@ -81,6 +92,15 @@ class Settings(BaseSettings):
     SARA_RAW_STORAGE_CONTAINER: str = Field(default="sara-raw")
     SARA_ANON_STORAGE_CONTAINER: str = Field(default="sara-anon")
     SARA_VIS_STORAGE_CONTAINER: str = Field(default="sara-vis")
+    SARA_AZURE_CLIENT_SECRET: str = Field(default="")
+
+    SARA_AZURE_CLIENT_ID: str = Field(default="dd7e115a-037e-4846-99c4-07561158a9cd")
+    SARA_AZURE_TENANT_ID: str = Field(default="3aa4a235-b6e2-48d5-9195-7fcf05b459b0")
+    SARA_IMAGE: str = Field(default="ghcr.io/equinor/sara:latest")
+    SARA_NAME: str = Field(default="sara")
+    SARA_PORT: int = Field(default=8100)
+    SARA_ALIAS: str = Field(default="sara")
+    SARA_MQTT_PASSWORD: str = Field(default="")
 
     # Azurite environment and configurations
     AZURITE_IMAGE: str = Field(default="mcr.microsoft.com/azure-storage/azurite:latest")
@@ -94,7 +114,7 @@ class Settings(BaseSettings):
             self.SARA_VIS_STORAGE_CONTAINER,
         ]
 
-    AZURITE_ACCOUNT: str = Field(default="devstoreaccount1")
+    AZURITE_ACCOUNT: str = Field(default="saradevstorageraw")
     AZURITE_KEY: str = Field(
         default="Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="
     )  # This is a default Azurite key for a development container and not a secret

@@ -12,6 +12,7 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
     wait_for_mission_run_status,
     wait_for_robot_status,
 )
+from robotics_integration_tests.utilities.sara_backend_api import wait_for_sara_logs
 
 
 def test_simple_mission_with_three_tags_is_successful(
@@ -51,4 +52,9 @@ def test_simple_mission_with_three_tags_is_successful(
         backend_url=armada.flotilla_backend.backend_url,
         robot_name=robot_name,
         expected_status="Home",
+    )
+
+    wait_for_sara_logs(
+        container=armada.sara.container,
+        log_message="Error occurred while triggering anonymizer workflow for InspectionId",
     )

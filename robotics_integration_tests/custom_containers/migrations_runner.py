@@ -1,4 +1,5 @@
 from pathlib import Path
+import uuid
 
 from docker.models.networks import Network
 from testcontainers.core.image import DockerImage
@@ -29,5 +30,29 @@ def create_migrations_runner_container(
         .with_env("GIT_REF", settings.GIT_REPOSITORY_FOR_MIGRATIONS_REF)
         .with_env("EF_PROJECT_PATH", settings.BACKEND_PROJECT_FILE_FOLDER)
         .with_env("EF_STARTUP_PATH", settings.BACKEND_PROJECT_FILE_FOLDER)
+    )
+    return container
+
+
+def create_sara_migrations_runner_container(
+    network: Network, postgres_connection_string: str
+) -> StreamLoggingDockerContainer:
+    sara_migrations_runner_image: DockerImage = DockerImage(
+        path=str(Path(settings.RELATIVE_PATH_TO_DOCKERFILE).resolve(strict=True)),
+        tag="sara-migrations-runner",
+    ).build()
+
+    container = (
+        StreamLoggingDockerContainer(image=str(sara_migrations_runner_image))
+        .with_name(f"sara-migrations-runner-{uuid.uuid4().hex[:8]}")
+        .with_network(network)
+        .with_env("DATABASE_URL", postgres_connection_string)
+        .with_env("AZURE_CLIENT_SECRET", settings.SARA_AZURE_CLIENT_SECRET)
+        .with_env("AZURE_CLIENT_ID", settings.SARA_AZURE_CLIENT_ID)
+        .with_env("AZURE_TENANT_ID", settings.SARA_AZURE_TENANT_ID)
+        .with_env("GIT_REPO", settings.SARA_GIT_REPOSITORY_FOR_MIGRATIONS)
+        .with_env("GIT_REF", settings.SARA_GIT_REPOSITORY_FOR_MIGRATIONS_REF)
+        .with_env("EF_PROJECT_PATH", settings.SARA_BACKEND_PROJECT_FILE_FOLDER)
+        .with_env("EF_STARTUP_PATH", settings.SARA_BACKEND_PROJECT_FILE_FOLDER)
     )
     return container

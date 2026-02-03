@@ -60,6 +60,8 @@ jobs:
             FLOTILLA-BROKER-SERVER-KEY
             ISAR-AZURE-CLIENT-SECRET
             ISAR-MQTT-PASSWORD
+            SARA-AZURE-CLIENT-SECRET
+            SARA-MQTT-PASSWORD
           )
 
           for name in "${secrets[@]}"; do
@@ -121,6 +123,8 @@ jobs:
           FLOTILLA_BROKER_SERVER_KEY: ${{ env.FLOTILLA_BROKER_SERVER_KEY }}
           ISAR_AZURE_CLIENT_SECRET: ${{ env.ISAR_AZURE_CLIENT_SECRET }}
           ISAR_MQTT_PASSWORD: ${{ env.ISAR_MQTT_PASSWORD }}
+          SARA_AZURE_CLIENT_SECRET: ${{ env.SARA_AZURE_CLIENT_SECRET }}
+          SARA_MQTT_PASSWORD: ${{ env.SARA_MQTT_PASSWORD }}
 
         run: |
           pytest -s robotics_integration_tests
