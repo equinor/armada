@@ -1,0 +1,16 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: armada
+  description: The armada repository facilitates integration tests in the full Flotilla robotics system which may be executed from a remote repository.
+  annotations:
+    github.com/project-slug: equinor/armada
+    github.com/team-slug: equinor/eq-robot-developer
+spec:
+  type: other
+  lifecycle: production
+  owner: eq-robot-developer
+  system: system:default/flotilla
+  dependsOn:
+    - component:default/flotilla-backend
+    - component:default/flotilla-broker
