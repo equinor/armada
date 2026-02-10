@@ -20,11 +20,13 @@ WAIT_FOR_DB_TIMEOUT="${WAIT_FOR_DB_TIMEOUT:-60}"
 echo "Cloning $GIT_REPO @ $GIT_REF ..."
 rm -rf /work/repo
 if [ "$GIT_REF" = "latest" ]; then
-  GIT_REF=$(curl -s ${GITHUB_TOKEN:+-H "Authorization: token $GITHUB_TOKEN"} \
+  BRANCH=$(curl -s ${GITHUB_TOKEN:+-H "Authorization: token $GITHUB_TOKEN"} \
     "https://api.github.com/repos/$GIT_REPO/releases/latest" | jq -r .tag_name)
-  echo "Resolved latest to $GIT_REF"
+  echo "Resolved latest to $BRANCH"
+else
+  BRANCH="main"
 fi
-git clone --depth 1 --branch "$GIT_REF" "https://github.com/$GIT_REPO" /work/repo
+git clone --depth 1 --branch "$BRANCH" "https://github.com/$GIT_REPO" /work/repo
 
 cd /work/repo
 

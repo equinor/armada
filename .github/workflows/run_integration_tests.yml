@@ -92,6 +92,7 @@ jobs:
           echo "postgres=${{ env.POSTGRESQL_IMAGE }}"                       >> $GITHUB_OUTPUT
           echo "isar_robot=${{ env.ISAR_ROBOT_IMAGE }}:${TAG}"              >> $GITHUB_OUTPUT
           echo "azurite=${{ env.AZURITE_IMAGE }}"                           >> $GITHUB_OUTPUT
+          echo "git_ref=$TAG"                                               >> $GITHUB_OUTPUT
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -107,18 +108,19 @@ jobs:
       - name: Run integration tests with pytest
         working-directory: integration-tests
         env:
-          FLOTILLA_BACKEND_IMAGE:           ${{ steps.images.outputs.flotilla_backend }}
-          FLOTILLA_BROKER_IMAGE:            ${{ steps.images.outputs.flotilla_broker }}
-          POSTGRESQL_IMAGE:                 ${{ steps.images.outputs.postgres }}
-          ISAR_ROBOT_IMAGE:                 ${{ steps.images.outputs.isar_robot }}
-          AZURITE_IMAGE:                    ${{ steps.images.outputs.azurite }}
+          FLOTILLA_BACKEND_IMAGE: ${{ steps.images.outputs.flotilla_backend }}
+          FLOTILLA_BROKER_IMAGE: ${{ steps.images.outputs.flotilla_broker }}
+          POSTGRESQL_IMAGE: ${{ steps.images.outputs.postgres }}
+          ISAR_ROBOT_IMAGE: ${{ steps.images.outputs.isar_robot }}
+          AZURITE_IMAGE: ${{ steps.images.outputs.azurite }}
+          GIT_REPOSITORY_FOR_MIGRATIONS_REF: ${{ steps.images.outputs.git_ref }}
 
-          INTEGRATION_TESTS_CLIENT_SECRET:  ${{ env.INTEGRATION_TESTS_CLIENT_SECRET }}
-          FLOTILLA_MQTT_PASSWORD:           ${{ env.FLOTILLA_MQTT_PASSWORD }}
-          FLOTILLA_AZURE_CLIENT_SECRET:     ${{ env.FLOTILLA_AZURE_CLIENT_SECRET }}
-          FLOTILLA_BROKER_SERVER_KEY:       ${{ env.FLOTILLA_BROKER_SERVER_KEY }}
-          ISAR_AZURE_CLIENT_SECRET:         ${{ env.ISAR_AZURE_CLIENT_SECRET }}
-          ISAR_MQTT_PASSWORD:               ${{ env.ISAR_MQTT_PASSWORD }}
+          INTEGRATION_TESTS_CLIENT_SECRET: ${{ env.INTEGRATION_TESTS_CLIENT_SECRET }}
+          FLOTILLA_MQTT_PASSWORD: ${{ env.FLOTILLA_MQTT_PASSWORD }}
+          FLOTILLA_AZURE_CLIENT_SECRET: ${{ env.FLOTILLA_AZURE_CLIENT_SECRET }}
+          FLOTILLA_BROKER_SERVER_KEY: ${{ env.FLOTILLA_BROKER_SERVER_KEY }}
+          ISAR_AZURE_CLIENT_SECRET: ${{ env.ISAR_AZURE_CLIENT_SECRET }}
+          ISAR_MQTT_PASSWORD: ${{ env.ISAR_MQTT_PASSWORD }}
 
         run: |
           pytest -s robotics_integration_tests
