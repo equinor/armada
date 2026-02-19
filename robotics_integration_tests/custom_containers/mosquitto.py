@@ -23,6 +23,7 @@ def create_flotilla_broker_container(
 ) -> DockerContainer:
     container: DockerContainer = (
         DockerContainer(image=image)
+        .with_kwargs(platform="linux/amd64")
         .with_name(name)
         .with_exposed_ports(port)
         .with_network(network=network)
