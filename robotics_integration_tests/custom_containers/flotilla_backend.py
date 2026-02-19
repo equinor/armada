@@ -36,6 +36,7 @@ def create_flotilla_backend_container(
         .with_exposed_ports(port)
         .with_network(network)
         .with_network_aliases(alias)
+        .with_kwargs(platform="linux/amd64")
         .with_env("Mqtt__Host", settings.FLOTILLA_BROKER_ALIAS)
         .with_env("Mqtt__Port", settings.FLOTILLA_BROKER_PORT)
         .with_env("Mqtt__Password", settings.FLOTILLA_MQTT_PASSWORD)
