@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Label Stale Issues
-        uses: actions/stale@v10.1.0
+        uses: actions/stale@b5d41d4e1d5dceea10e7104786b73624c18a190f
         with:
           repo-token: ${{ secrets.STALE_ISSUE_TOKEN }}
           stale-issue-label: "stale"
