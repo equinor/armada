@@ -9,6 +9,12 @@ on:
         type: string
         default: '["3.13", "3.14"]'
 
+      test-env:
+        description: "JSON object of environment variables provided for pytest run"
+        required: false
+        type: string
+        default: '{}'
+
       run-black:
         description: "Run black formatter check"
         required: false
@@ -54,6 +60,7 @@ jobs:
 
       - name: Test with pytest
         run: pytest
+        env: ${{ fromJSON(inputs.test-env) }}
 
       - name: Run black
         if: ${{ inputs.run-black }}
