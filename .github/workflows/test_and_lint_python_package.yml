@@ -1,0 +1,68 @@
+name: Python package
+
+on:
+  workflow_call:
+    inputs:
+      python-versions:
+        description: "JSON list of python versions"
+        required: false
+        type: string
+        default: '["3.13", "3.14"]'
+
+      run-black:
+        description: "Run black formatter check"
+        required: false
+        type: boolean
+        default: true
+
+      run-mypy:
+        description: "Run mypy type checking"
+        required: false
+        type: boolean
+        default: true
+
+      run-ruff:
+        description: "Run ruff linting"
+        required: false
+        type: boolean
+        default: true
+
+# Permissions must be provided from calling workflow
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 4
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Test with pytest
+        run: pytest
+
+      - name: Run black
+        if: ${{ inputs.run-black }}
+        run: black --check .
+
+      - name: Run mypy
+        if: ${{ inputs.run-mypy }}
+        run: mypy --disable-error-code=import-untyped .
+
+      - name: Run ruff
+        if: ${{ inputs.run-ruff }}
+        run: ruff check .
