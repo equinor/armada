@@ -1,4 +1,4 @@
-name: Python package
+name: Test and lint python package
 
 on:
   workflow_call:

@@ -1,0 +1,76 @@
+name: Build and publish docker image to container registry
+
+
+on:
+  workflow_call:
+    inputs:
+      registry:
+        description: "The container registry to upload to"
+        required: true
+        type: string
+        default: "ghcr.io"
+
+      registry-username:
+        description: "Username for container registry"
+        required: true
+        type: string
+
+      image-name:
+        description: "Name of the image to publish"
+        required: true
+        type: string
+
+      path-to-dockerfile:
+        description: "Path to the Dockerfile to build"
+        required: false
+        type: string
+        default: "Dockerfile"
+
+      path-to-context:
+        description: "Path to the build context for the Docker build action"
+        required: false
+        type: string
+        default: "."
+
+    secrets:
+      registry-password:
+        description: "Password for container registry"
+        required: true
+
+# Permissions must be provided from calling workflow
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push-docker-image-to-container-registry:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 #v4
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ inputs.registry-username }}
+          password: ${{ secrets.registry-password }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf #v6
+        with:
+          images: ${{ inputs.registry }}/${{ inputs.image-name }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 #v7
+        with:
+          context: ${{ inputs.path-to-context }}
+          file: ${{ inputs.path-to-dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
