@@ -33,6 +33,12 @@ on:
         type: boolean
         default: true
 
+      run-isort:
+        description: "Run isort import sorting"
+        required: false
+        type: boolean
+        default: true
+
 # Permissions must be provided from calling workflow
 permissions:
   contents: read
@@ -58,10 +64,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Test with pytest
-        run: pytest
-        env: ${{ fromJSON(inputs.test-env) }}
-
       - name: Run black
         if: ${{ inputs.run-black }}
         run: black --check .
@@ -73,3 +75,11 @@ jobs:
       - name: Run ruff
         if: ${{ inputs.run-ruff }}
         run: ruff check .
+
+      - name: Run isort
+        if: ${{ inputs.run-isort }}
+        run: isort --check .
+
+      - name: Test with pytest
+        run: pytest
+        env: ${{ fromJSON(inputs.test-env) }}
