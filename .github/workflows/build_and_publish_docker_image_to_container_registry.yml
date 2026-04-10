@@ -98,9 +98,7 @@ jobs:
             ${{ inputs.registry }}/${{ inputs.image_name }}:${{ inputs.tag }}
             ${{ inputs.registry }}/${{ inputs.image_name }}:${{ inputs.secondary_tag }}
           labels: ${{ steps.meta.outputs.labels }}
-          secrets: |
-            "ANYMAL_DOWNLOAD_PASSWORD_SECRET=${{ secrets.anymal_download_password }}"
-          build-args: |
-            ANYMAL_DOWNLOAD_USER_NAME=${{ inputs.anymal_download_username }}
+          secrets: ${{ secrets.anymal_download_password != '' && format('ANYMAL_DOWNLOAD_PASSWORD_SECRET={0}', secrets.anymal_download_password) || '' }}
+          build-args: ${{ inputs.anymal_download_username != '' && format('ANYMAL_DOWNLOAD_USER_NAME={0}', inputs.anymal_download_username) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
