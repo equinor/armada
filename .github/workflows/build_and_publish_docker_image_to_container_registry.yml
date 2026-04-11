@@ -37,11 +37,6 @@ on:
         type: string
         default: "."
 
-      anymal_download_username:
-        description: "Username to download software during build. Only required for isar-anymal."
-        required: false
-        type: string
-
     secrets:
       registry_username:
         description: "Username for container registry"
@@ -53,6 +48,10 @@ on:
 
       anymal_download_password:
         description: "Password to download software during build. Only required for isar-anymal."
+        required: false
+
+      anymal_download_username:
+        description: "Username to download software during build. Only required for isar-anymal."
         required: false
 
 
@@ -99,6 +98,6 @@ jobs:
             ${{ inputs.registry }}/${{ inputs.image_name }}:${{ inputs.secondary_tag }}
           labels: ${{ steps.meta.outputs.labels }}
           secrets: ${{ secrets.anymal_download_password != '' && format('ANYMAL_DOWNLOAD_PASSWORD_SECRET={0}', secrets.anymal_download_password) || '' }}
-          build-args: ${{ inputs.anymal_download_username != '' && format('ANYMAL_DOWNLOAD_USER_NAME={0}', inputs.anymal_download_username) || '' }}
+          build-args: ${{ secrets.anymal_download_username != '' && format('ANYMAL_DOWNLOAD_USER_NAME={0}', secrets.anymal_download_username) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
