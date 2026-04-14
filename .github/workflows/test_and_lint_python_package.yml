@@ -39,6 +39,12 @@ on:
         type: boolean
         default: true
 
+      pre-install-command:
+        description: "Command to run before pip install (e.g. installing PyTorch from CPU index)"
+        required: false
+        type: string
+        default: ''
+
 # Permissions must be provided from calling workflow
 permissions:
   contents: read
@@ -58,6 +64,10 @@ jobs:
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6
         with:
           python-version: ${{ matrix.python-version }}
+
+      - name: Pre-install
+        if: ${{ inputs.pre-install-command != '' }}
+        run: ${{ inputs.pre-install-command }}
 
       - name: Install dependencies
         run: |
