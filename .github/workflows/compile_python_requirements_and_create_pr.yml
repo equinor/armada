@@ -2,6 +2,18 @@ name: Compile Requirements
 
 on:
   workflow_call:
+    inputs:
+      pyproject_file:
+        description: "Path to pyproject.toml file"
+        required: false
+        type: string
+        default: "pyproject.toml"
+      output_requirements_file:
+        description: "Path to output requirements file"
+        required: false
+        type: string
+        default: "requirements.txt"
+
 
 # Permissions must be provided from calling workflow
 permissions:
@@ -33,7 +45,7 @@ jobs:
 
       - name: Upgrade dependencies and compile requirements file
         run: |
-          pip-compile --output-file=requirements.txt pyproject.toml --upgrade
+          pip-compile --output-file=${{ inputs.output_requirements_file }} ${{ inputs.pyproject_file }} --upgrade
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 #v8
