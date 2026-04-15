@@ -1,0 +1,98 @@
+name: Update Kubernetes deployment
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: "Target environment (development, staging, or production)"
+        required: true
+        type: string
+
+      tag:
+        description: "Image tag to deploy"
+        required: true
+        type: string
+
+      registry:
+        description: "Container registry URL (e.g. ghcr.io, auroraprodacr.azurecr.io)"
+        required: true
+        type: string
+
+      image_name:
+        description: "Exact image name as it appears after newName in kustomization.yaml"
+        required: true
+        type: string
+
+      author_name:
+        description: "Git commit author name"
+        required: true
+        type: string
+
+      author_email:
+        description: "Git commit author email"
+        required: false
+        type: string
+
+      infrastructure_repository:
+        description: "Target infrastructure repository (e.g. equinor/robotics-infrastructure)"
+        required: true
+        type: string
+
+      commit_message_service_name:
+        description: "Human-readable service name for the commit message. Defaults to image_name if not set."
+        required: false
+        type: string
+
+    secrets:
+      deploy_key:
+        description: "SSH deploy key for the target infrastructure repository"
+        required: true
+
+# Permissions must be provided from calling workflow
+permissions:
+  contents: read
+
+jobs:
+  update-deployment:
+    name: Update deployment
+    runs-on: ubuntu-latest
+    env:
+      EMAIL: ${{ inputs.author_email }}
+      NAME: ${{ inputs.author_name }}
+      SERVICE_NAME: ${{ inputs.commit_message_service_name || inputs.image_name }}
+    steps:
+      - name: Checkout infrastructure
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+        with:
+          ref: main
+          repository: ${{ inputs.infrastructure_repository }}
+          ssh-key: ${{ secrets.deploy_key }}
+
+      - name: Update image tag in kustomization
+        run: |
+          KUSTOMIZATION_FILE="k8s_kustomize/overlays/${{ inputs.environment }}/kustomization.yaml"
+
+          GREP_RESULT=$(grep -n -x "  newName: ${{ inputs.registry }}/${{ inputs.image_name }}" "$KUSTOMIZATION_FILE" | cut -d ':' -f 1)
+          if [ -z "$GREP_RESULT" ]; then
+            echo "Error: Image ${{ inputs.registry }}/${{ inputs.image_name }} not found in $KUSTOMIZATION_FILE"
+            exit 1
+          fi
+
+          LINE_NUMBERS=($GREP_RESULT)
+          for line_number in "${LINE_NUMBERS[@]}"
+          do
+              TAG_LINE_NUMBER=$((line_number + 1))
+              sed -i "${TAG_LINE_NUMBER} s/newTag:.*/newTag: ${{ inputs.tag }}/" "$KUSTOMIZATION_FILE"
+          done
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.email "${EMAIL}"
+          git config --global user.name  "GitHub Actions (${NAME})"
+          git add k8s_kustomize/overlays/${{ inputs.environment }}/kustomization.yaml
+          if ! git diff-index --quiet HEAD; then
+            git commit --message "GHA: Update ${SERVICE_NAME} in ${{ inputs.environment }} (${{ inputs.tag }})"
+            git push
+          else
+            echo "No changes to commit or push."
+          fi
