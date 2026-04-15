@@ -1,0 +1,92 @@
+name: Test and lint dotnet package
+
+on:
+  workflow_call:
+    inputs:
+      dotnet_version:
+        description: ".NET SDK version to use"
+        required: false
+        type: string
+        default: "10.0.x"
+
+      build_directory:
+        description: "Directory for dotnet build"
+        required: true
+        type: string
+
+      test_directory:
+        description: "Directory for dotnet build -warnaserror and dotnet test. Defaults to build_directory."
+        required: false
+        type: string
+        default: ""
+
+      format_directory:
+        description: "Directory for CSharpier format check. Defaults to build_directory."
+        required: false
+        type: string
+        default: ""
+
+# Permissions must be provided from calling workflow
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 #v5
+        with:
+          dotnet-version: ${{ inputs.dotnet_version }}
+
+      - name: Build project and dependencies
+        working-directory: ${{ inputs.build_directory }}
+        run: dotnet build
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 #v5
+        with:
+          dotnet-version: ${{ inputs.dotnet_version }}
+
+      - name: Build project and dependencies
+        working-directory: ${{ inputs.test_directory || inputs.build_directory }}
+        run: dotnet build -warnaserror
+
+      - name: Run tests
+        working-directory: ${{ inputs.test_directory || inputs.build_directory }}
+        run: dotnet test
+
+  check_formatting:
+    name: Check formatting
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 #v5
+        with:
+          dotnet-version: ${{ inputs.dotnet_version }}
+
+      - name: Run csharpier format check
+        working-directory: ${{ inputs.format_directory || inputs.build_directory }}
+        run: |
+          dotnet tool restore
+          dotnet csharpier check .
