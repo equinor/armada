@@ -72,7 +72,7 @@ jobs:
         run: |
           KUSTOMIZATION_FILE="k8s_kustomize/overlays/${{ inputs.environment }}/kustomization.yaml"
 
-          GREP_RESULT=$(grep -n -x "  newName: ${{ inputs.registry }}/${{ inputs.image_name }}" "$KUSTOMIZATION_FILE" | cut -d ':' -f 1)
+          GREP_RESULT=$(grep -n "newName: ${{ inputs.registry }}/${{ inputs.image_name }}$" "$KUSTOMIZATION_FILE" | cut -d ':' -f 1)
           if [ -z "$GREP_RESULT" ]; then
             echo "Error: Image ${{ inputs.registry }}/${{ inputs.image_name }} not found in $KUSTOMIZATION_FILE"
             exit 1
