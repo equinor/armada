@@ -3,17 +3,11 @@ name: Compile Requirements
 on:
   workflow_call:
     inputs:
-      pyproject_file:
+      project_name:
         description: "Path to pyproject.toml file"
         required: false
         type: string
-        default: "pyproject.toml"
-      output_requirements_file:
-        description: "Path to output requirements file"
-        required: false
-        type: string
-        default: "requirements.txt"
-
+        default: "."
 
 # Permissions must be provided from calling workflow
 permissions:
@@ -30,22 +24,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b #v8.1.0
         with:
-          python-version: "3.14.3"
+          enable-cache: true
 
-      - name: Install pip-tools
+      - name: Upgrade uv.lock
         run: |
-          python -m pip install pip
-          pip install pip-tools
-          pip --version
-          pip-compile --version
-          python -V
-
-      - name: Upgrade dependencies and compile requirements file
-        run: |
-          pip-compile --output-file=${{ inputs.output_requirements_file }} ${{ inputs.pyproject_file }} --upgrade
+          uv lock --upgrade --project ${{ inputs.project_name }}
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 #v8
