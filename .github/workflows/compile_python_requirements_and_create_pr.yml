@@ -28,10 +28,11 @@ jobs:
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b #v8.1.0
         with:
           enable-cache: true
+          python-version: "3.14.3"
 
       - name: Upgrade uv.lock
         run: |
-          uv lock --upgrade --project ${{ inputs.project_name }}
+          uv lock --upgrade --no-sources --project ${{ inputs.project_name }}
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 #v8
