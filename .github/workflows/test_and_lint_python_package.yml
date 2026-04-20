@@ -7,7 +7,7 @@ on:
         description: "JSON list of python versions"
         required: false
         type: string
-        default: '["3.13", "3.14"]'
+        default: '["3.14"]'
 
       test-env:
         description: "JSON object of environment variables provided for pytest run"
