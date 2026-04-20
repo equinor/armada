@@ -75,19 +75,19 @@ jobs:
 
       - name: Run black
         if: ${{ inputs.run-black }}
-        run: black --check .
+        run: uv run black --check .
 
       - name: Run mypy
         if: ${{ inputs.run-mypy }}
-        run: mypy --disable-error-code=import-untyped .
+        run: uv run mypy --disable-error-code=import-untyped .
 
       - name: Run ruff
         if: ${{ inputs.run-ruff }}
-        run: ruff check .
+        run: uv run ruff check .
 
       - name: Run isort
         if: ${{ inputs.run-isort }}
-        run: isort --check .
+        run: uv run isort --check .
 
       - name: Test with pytest
         run: uv run pytest
