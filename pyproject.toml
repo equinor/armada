@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "robotics-integration-tests"
 version = "1.0.0"
 description = "Internal reusable integration test harness"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 dependencies = [
   "pytest",
   "testcontainers[postgres,azurite,mqtt]",
