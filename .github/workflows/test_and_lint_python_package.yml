@@ -71,7 +71,7 @@ jobs:
         run: ${{ inputs.pre-install-command }}
 
       - name: Install dependencies
-        run: uv sync --frozen --no-sources --dev
+        run: uv sync --frozen --dev
 
       - name: Run black
         if: ${{ inputs.run-black }}
