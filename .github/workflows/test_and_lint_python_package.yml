@@ -40,7 +40,7 @@ on:
         default: true
 
       pre-install-command:
-        description: "Command to run before pip install (e.g. installing PyTorch from CPU index)"
+        description: "Command to run before uv sync (e.g. installing PyTorch from CPU index)"
         required: false
         type: string
         default: ''
@@ -60,9 +60,10 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b #v8.1.0
         with:
+          enable-cache: true
           python-version: ${{ matrix.python-version }}
 
       - name: Pre-install
@@ -70,9 +71,7 @@ jobs:
         run: ${{ inputs.pre-install-command }}
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv sync --frozen --no-sources --dev
 
       - name: Run black
         if: ${{ inputs.run-black }}
@@ -91,5 +90,5 @@ jobs:
         run: isort --check .
 
       - name: Test with pytest
-        run: pytest
+        run: uv run pytest
         env: ${{ fromJSON(inputs.test-env) }}
