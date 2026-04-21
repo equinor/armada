@@ -42,7 +42,7 @@ def wait_for_sara_to_be_responsive(sara_url: str, timeout: int = 60) -> None:
 
         try:
             analysis_mapping: List[Dict] = _list_database_entries(
-                backend_url=sara_url, request_path="AnalysisMapping"
+                backend_url=sara_url, request_path="api/AnalysisMapping"
             )
         except Exception as e:
             logger.warning(
