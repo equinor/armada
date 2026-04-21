@@ -39,7 +39,7 @@ on:
         type: boolean
         default: true
 
-      pre-install-command:
+      additional-install-command:
         description: "Command to run before uv sync (e.g. installing PyTorch from CPU index)"
         required: false
         type: string
@@ -66,12 +66,12 @@ jobs:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
 
-      - name: Pre-install
-        if: ${{ inputs.pre-install-command != '' }}
-        run: ${{ inputs.pre-install-command }}
-
       - name: Install dependencies
         run: uv sync --frozen --extra dev
+
+      - name: Additional-install
+        if: ${{ inputs.additional-install-command != '' }}
+        run: ${{ inputs.additional-install-command }}
 
       - name: Run black
         if: ${{ inputs.run-black }}
