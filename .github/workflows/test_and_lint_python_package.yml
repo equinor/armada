@@ -45,6 +45,12 @@ on:
         type: string
         default: ''
 
+      project-path:
+        description: "Path to the project directory containing pyproject.toml"
+        required: false
+        type: string
+        default: '.'
+
 # Permissions must be provided from calling workflow
 permissions:
   contents: read
@@ -68,27 +74,34 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --frozen --extra dev
+        working-directory: ${{ inputs.project-path }}
 
       - name: Additional-install
         if: ${{ inputs.additional-install-command != '' }}
         run: ${{ inputs.additional-install-command }}
+        working-directory: ${{ inputs.project-path }}
 
       - name: Run black
         if: ${{ inputs.run-black }}
         run: uv run --frozen black --check .
+        working-directory: ${{ inputs.project-path }}
 
       - name: Run mypy
         if: ${{ inputs.run-mypy }}
         run: uv run --frozen mypy --disable-error-code=import-untyped .
+        working-directory: ${{ inputs.project-path }}
 
       - name: Run ruff
         if: ${{ inputs.run-ruff }}
         run: uv run --frozen ruff check .
+        working-directory: ${{ inputs.project-path }}
 
       - name: Run isort
         if: ${{ inputs.run-isort }}
         run: uv run --frozen isort --check .
+        working-directory: ${{ inputs.project-path }}
 
       - name: Test with pytest
         run: uv run --frozen pytest
+        working-directory: ${{ inputs.project-path }}
         env: ${{ fromJSON(inputs.test-env) }}
