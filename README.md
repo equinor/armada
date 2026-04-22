@@ -58,12 +58,12 @@ INTEGRATION_TEST_AZURE_CLIENT_SECRET
 The input `lane` determines which image tag should be applied to the internally developed packages like Flotilla and ISAR. If input is set as `lane=dev` the newest development images (corresponding to newest push to main branch) will be used while `lane=latest` will use the newest release. 
 
 ## Local development
-Clone the repository and install the packages in your virtual environment.
+Clone the repository and install dependencies with [uv](https://docs.astral.sh/uv/):
 ```bash
-pip install -r robotics_integration_tests/requirements.txt
+uv sync
 ```
 
-Ensure the following secrets are populated in your local environment, either as environment variables or in a .env file in the repository root directory.
+Ensure the following secrets are populated in your local environment, either as environment variables or in a `.env` file in the repository root directory.
 
 ```
 INTEGRATION_TESTS_CLIENT_SECRET
@@ -81,5 +81,5 @@ They may all be found in the integration test [keyvault](https://portal.azure.co
 You may now run the tests with
 
 ```bash
-pytest -s .
+uv run pytest -s .
 ```
