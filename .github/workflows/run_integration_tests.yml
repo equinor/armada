@@ -96,16 +96,15 @@ jobs:
           echo "azurite=${{ env.AZURITE_IMAGE }}"                           >> $GITHUB_OUTPUT
           echo "git_ref=$TAG"                                               >> $GITHUB_OUTPUT
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b #v8.1.0
         with:
+          enable-cache: true
           python-version: "3.14"
 
       - name: Install dependencies
         working-directory: integration-tests
-        run: |
-          pip install -U pip
-          pip install -e .
+        run: uv sync --frozen
 
       - name: Run integration tests with pytest
         working-directory: integration-tests
@@ -126,5 +125,4 @@ jobs:
           SARA_AZURE_CLIENT_SECRET: ${{ env.SARA_AZURE_CLIENT_SECRET }}
           SARA_MQTT_PASSWORD: ${{ env.SARA_MQTT_PASSWORD }}
 
-        run: |
-          pytest -s robotics_integration_tests
+        run: uv run --frozen pytest -s robotics_integration_tests
