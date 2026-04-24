@@ -1,0 +1,51 @@
+name: Migration checks
+
+on:
+  workflow_call:
+    inputs:
+      database_paths:
+        description: "Glob pattern for database model files (e.g. 'backend/api/Database/**')"
+        required: true
+        type: string
+      migrations_paths:
+        description: "Glob pattern for migration files (e.g. 'backend/api/Migrations/**')"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  check_changes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+
+      - name: Get changed files in database folder
+        id: database_changes
+        uses: tj-actions/changed-files@22103cc46bda19c2b464ffe86db46df6922fd323 #v47
+        with:
+          files: ${{ inputs.database_paths }}
+
+      - name: Get changed files in migrations folder
+        id: migration_changes
+        uses: tj-actions/changed-files@22103cc46bda19c2b464ffe86db46df6922fd323 #v47
+        with:
+          files: ${{ inputs.migrations_paths }}
+
+      - name: Write results
+        run: |
+          cat <<EOF > migration-check-results.json
+          {
+            "pr_number": ${{ github.event.pull_request.number }},
+            "database_changed": "${{ steps.database_changes.outputs.any_changed }}",
+            "migrations_changed": "${{ steps.migration_changes.outputs.any_changed }}"
+          }
+          EOF
+
+      - name: Upload results
+        uses: actions/upload-artifact@ea165f8d65b6db9b8a4d0d969e6e21c0ff4c0121 #v4
+        with:
+          name: migration-check-results
+          path: migration-check-results.json

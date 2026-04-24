@@ -1,0 +1,113 @@
+name: Migration actions
+
+on:
+  workflow_call:
+    inputs:
+      stage_one_workflow_run_id:
+        description: "The workflow run ID from stage one (migration_checks) to download artifacts from"
+        required: true
+        type: string
+      possible_migration_message:
+        description: "Comment body posted when database files change but no migrations are detected"
+        required: true
+        type: string
+      migration_reminder:
+        description: "Comment body posted when migration files are detected"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+env:
+  update_success_message: ":sparkles: Successfully ran migration command! :sparkles:"
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    outputs:
+      pr_number: ${{ steps.read.outputs.pr_number }}
+      database_changed: ${{ steps.read.outputs.database_changed }}
+      migrations_changed: ${{ steps.read.outputs.migrations_changed }}
+    steps:
+      - name: Download artifact
+        uses: dawidd6/action-download-artifact@20319c5641d495c8a52e688b7dc5fada6c3c9b28 #v8
+        with:
+          run_id: ${{ inputs.stage_one_workflow_run_id }}
+          name: migration-check-results
+
+      - name: Read results
+        id: read
+        run: |
+          cat migration-check-results.json
+          echo "pr_number=$(jq -r '.pr_number' migration-check-results.json)" >> $GITHUB_OUTPUT
+          echo "database_changed=$(jq -r '.database_changed' migration-check-results.json)" >> $GITHUB_OUTPUT
+          echo "migrations_changed=$(jq -r '.migrations_changed' migration-check-results.json)" >> $GITHUB_OUTPUT
+
+  notify_possible_migration:
+    needs: download
+    if: needs.download.outputs.database_changed == 'true' && needs.download.outputs.migrations_changed != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for previous comment
+        id: notify_comment_search
+        uses: peter-evans/find-comment@b30e6a3c0ed37e7c023ccd3f1db5c6c0b0c23aad #v4
+        with:
+          issue-number: ${{ needs.download.outputs.pr_number }}
+          body-includes: Changes in database
+
+      - name: Add comment if not already posted
+        if: ${{ !steps.notify_comment_search.outputs.comment-body }}
+        uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 #v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ needs.download.outputs.pr_number }}
+          body: ${{ inputs.possible_migration_message }}
+
+  notify_migration_changes:
+    needs: download
+    if: needs.download.outputs.migrations_changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for previous comment
+        id: notify_comment_search
+        uses: peter-evans/find-comment@b30e6a3c0ed37e7c023ccd3f1db5c6c0b0c23aad #v4
+        with:
+          issue-number: ${{ needs.download.outputs.pr_number }}
+          body-includes: Migrations changes detected
+
+      - name: Add comment if not already posted
+        if: ${{ !steps.notify_comment_search.outputs.comment-body }}
+        uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 #v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ needs.download.outputs.pr_number }}
+          body: ${{ inputs.migration_reminder }}
+
+      - name: Add label
+        run: gh pr edit "$NUMBER" --add-label "database-change"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ needs.download.outputs.pr_number }}
+
+  verify_migrations:
+    needs: download
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for database success comment
+        if: needs.download.outputs.migrations_changed == 'true'
+        id: database_comment_search
+        uses: peter-evans/find-comment@b30e6a3c0ed37e7c023ccd3f1db5c6c0b0c23aad #v4
+        with:
+          issue-number: ${{ needs.download.outputs.pr_number }}
+          body-includes: ${{ env.update_success_message }}
+          comment-author: github-actions[bot]
+
+      - name: Fail if database not updated
+        if: >-
+          needs.download.outputs.migrations_changed == 'true' &&
+          !steps.database_comment_search.outputs.comment-body
+        run: exit 1

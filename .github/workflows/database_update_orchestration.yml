@@ -1,0 +1,108 @@
+name: Database update orchestration
+
+on:
+  workflow_call:
+    outputs:
+      approved:
+        description: "Whether the PR was approved and migrations should run"
+        value: ${{ jobs.get_review_state.outputs.review_approved }}
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  base_check:
+    if: |
+      github.event.issue.pull_request &&
+      github.event.comment.body == '/UpdateDatabase'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    outputs:
+      eyes_id: ${{ fromJson(steps.eyes.outputs.data).id }}
+    steps:
+      - name: React to comment
+        uses: octokit/request-action@b91aabaa861c777dcdb14e2387e30eddf04619ae #v3
+        id: eyes
+        with:
+          route: POST /repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions
+          content: "eyes"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  get_review_state:
+    needs: base_check
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      review_approved: ${{ contains(fromJson(steps.get.outputs.data).*.state, 'APPROVED') }}
+      eyes_id: ${{ needs.base_check.outputs.eyes_id }}
+    steps:
+      - uses: octokit/request-action@b91aabaa861c777dcdb14e2387e30eddf04619ae #v3
+        id: get
+        with:
+          route: GET /repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}/reviews
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  if_not_approved_then_stop:
+    needs: get_review_state
+    if: ${{ needs.get_review_state.outputs.review_approved == 'false' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Remove eyes reaction
+        uses: octokit/request-action@b91aabaa861c777dcdb14e2387e30eddf04619ae #v3
+        with:
+          route: DELETE /repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions/${{ needs.get_review_state.outputs.eyes_id }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: React to comment
+        uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 #v5
+        with:
+          comment-id: ${{ github.event.comment.id }}
+          reactions: confused, -1
+
+      - name: Add comment
+        uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 #v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.issue.number }}
+          body: |
+            :no_entry: Cannot update database until the Pull Request is approved! :no_entry:
+
+  database_update_start:
+    needs: get_review_state
+    if: ${{ needs.get_review_state.outputs.review_approved == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Remove eyes reaction
+        uses: octokit/request-action@b91aabaa861c777dcdb14e2387e30eddf04619ae #v3
+        with:
+          route: DELETE /repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions/${{ needs.get_review_state.outputs.eyes_id }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: React to comment
+        uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 #v5
+        with:
+          comment-id: ${{ github.event.comment.id }}
+          reactions: rocket, +1
+
+      - name: Add comment
+        uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 #v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.issue.number }}
+          body: |
+            :eyes: Running migration command... :eyes:

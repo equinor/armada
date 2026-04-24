@@ -1,0 +1,90 @@
+name: Run dotnet migrations
+
+on:
+  workflow_call:
+    inputs:
+      pull_request_checkout:
+        description: "Whether to checkout the PR head branch"
+        required: false
+        type: boolean
+        default: false
+      environment:
+        description: "Target environment (Development, Staging, Production)"
+        required: true
+        type: string
+      checkout_ref:
+        description: "Git ref to checkout (tag, branch, or SHA)"
+        required: false
+        type: string
+        default: "main"
+      working_directory:
+        description: "Directory containing the .NET project"
+        required: true
+        type: string
+      dotnet_version:
+        description: ".NET SDK version"
+        required: false
+        type: string
+        default: "10.0.x"
+      dotnet_ef_version:
+        description: "dotnet-ef tool version"
+        required: false
+        type: string
+        default: "10.0.*"
+    secrets:
+      client_id:
+        required: true
+      client_secret:
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  run_migrations:
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+        with:
+          ref: ${{ inputs.checkout_ref }}
+
+      - name: Fetch PR head SHA
+        if: ${{ inputs.pull_request_checkout }}
+        id: pr_head_sha
+        run: |
+          PR_SHA=$(gh pr view ${{ github.event.issue.number }} --json headRefOid -q ".headRefOid")
+          echo "pr_head_sha=$PR_SHA" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout pull request by SHA
+        if: ${{ inputs.pull_request_checkout }}
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ steps.pr_head_sha.outputs.pr_head_sha }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 #v5
+        with:
+          dotnet-version: ${{ inputs.dotnet_version }}
+
+      - name: Build project and dependencies
+        run: dotnet build
+
+      - name: Install dotnet ef tool
+        run: dotnet tool install -g dotnet-ef --version ${{ inputs.dotnet_ef_version }}
+
+      - name: Update database
+        run: dotnet ef database update --no-build --verbose
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.client_id }}
+          AZURE_CLIENT_SECRET: ${{ secrets.client_secret }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          ASPNETCORE_ENVIRONMENT: ${{ vars.AspNetEnvironment }}

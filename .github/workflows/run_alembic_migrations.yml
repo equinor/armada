@@ -1,0 +1,76 @@
+name: Run alembic migrations
+
+on:
+  workflow_call:
+    inputs:
+      pull_request_checkout:
+        description: "Whether to checkout the PR head branch"
+        required: false
+        type: boolean
+        default: false
+      environment:
+        description: "Target environment (Development, Staging, Production)"
+        required: true
+        type: string
+      checkout_ref:
+        description: "Git ref to checkout (tag, branch, or SHA)"
+        required: false
+        type: string
+        default: "main"
+      python_version:
+        description: "Python version"
+        required: false
+        type: string
+        default: "3.14"
+    secrets:
+      client_id:
+        required: true
+      client_secret:
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  run_migrations:
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+        with:
+          ref: ${{ inputs.checkout_ref }}
+
+      - name: Fetch PR head SHA
+        if: ${{ inputs.pull_request_checkout }}
+        id: pr_head_sha
+        run: |
+          PR_SHA=$(gh pr view ${{ github.event.issue.number }} --json headRefOid -q ".headRefOid")
+          echo "pr_head_sha=$PR_SHA" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout pull request by SHA
+        if: ${{ inputs.pull_request_checkout }}
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ steps.pr_head_sha.outputs.pr_head_sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 #v6
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Update database
+        run: alembic upgrade head
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.client_id }}
+          AZURE_CLIENT_SECRET: ${{ secrets.client_secret }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
