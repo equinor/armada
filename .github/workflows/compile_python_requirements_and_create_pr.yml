@@ -32,7 +32,7 @@ jobs:
 
       - name: Upgrade uv.lock
         run: |
-          uv lock --upgrade --no-sources --project ${{ inputs.project_name }}
+          uv lock --upgrade --exclude-newer "5 days" --no-sources --project ${{ inputs.project_name }}
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 #v8
