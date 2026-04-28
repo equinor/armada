@@ -3,8 +3,8 @@ name: Compile Requirements
 on:
   workflow_call:
     inputs:
-      project_name:
-        description: "Path to pyproject.toml file"
+      project_names:
+        description: "List of project paths (newline or comma separated)"
         required: false
         type: string
         default: "."
@@ -32,7 +32,20 @@ jobs:
 
       - name: Upgrade uv.lock
         run: |
-          uv lock --upgrade --exclude-newer "5 days" --no-sources --project ${{ inputs.project_name }}
+          projects_input="${{ inputs.project_names }}"
+          # Convert comma-separated input into one project per line.
+          projects_by_line="$(tr ',' '\n' <<< "$projects_input")"
+
+          # Read the normalized list line-by-line from the here-string below.
+          while IFS= read -r project; do
+            # Skip blank lines so uv only runs for real project values.
+            if [ -z "$project" ]; then
+              continue
+            fi
+
+            uv lock --upgrade --exclude-newer "5 days" --no-sources --project "$project"
+          # Feed the multi-line project list to the while loop as stdin.
+          done <<< "$projects_by_line"
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 #v8
