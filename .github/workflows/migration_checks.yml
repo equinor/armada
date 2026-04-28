@@ -45,7 +45,7 @@ jobs:
           EOF
 
       - name: Upload results
-        uses: actions/upload-artifact@ea165f8d65b6db9b8a4d0d969e6e21c0ff4c0121 #v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 #v4
         with:
           name: migration-check-results
           path: migration-check-results.json
