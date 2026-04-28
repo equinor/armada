@@ -14,10 +14,17 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
+  issues: read
+
+env:
+  update_success_message: ":sparkles: Successfully ran migration command! :sparkles:"
 
 jobs:
   check_changes:
     runs-on: ubuntu-latest
+    outputs:
+      migrations_changed: ${{ steps.migration_changes.outputs.any_changed }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
@@ -49,3 +56,22 @@ jobs:
         with:
           name: migration-check-results
           path: migration-check-results.json
+
+  verify_migrations:
+    needs: check_changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for database success comment
+        if: needs.check_changes.outputs.migrations_changed == 'true'
+        id: database_comment_search
+        uses: peter-evans/find-comment@b30e6a3c0ed37e7c023ccd3f1db5c6c0b0c23aad #v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body-includes: ${{ env.update_success_message }}
+          comment-author: github-actions[bot]
+
+      - name: Fail if database not updated
+        if: >-
+          needs.check_changes.outputs.migrations_changed == 'true' &&
+          !steps.database_comment_search.outputs.comment-body
+        run: exit 1
