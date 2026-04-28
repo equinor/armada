@@ -6,6 +6,9 @@ on:
       approved:
         description: "Whether the PR was approved and migrations should run"
         value: ${{ jobs.get_review_state.outputs.review_approved }}
+      pr_head_sha:
+        description: "The PR head commit SHA captured at approval time"
+        value: ${{ jobs.database_update_start.outputs.pr_head_sha }}
 
 permissions:
   contents: read
@@ -85,7 +88,17 @@ jobs:
     permissions:
       pull-requests: write
       issues: write
+    outputs:
+      pr_head_sha: ${{ steps.pr_sha.outputs.pr_head_sha }}
     steps:
+      - name: Capture PR head SHA
+        id: pr_sha
+        run: |
+          PR_SHA=$(gh pr view ${{ github.event.issue.number }} --repo ${{ github.repository }} --json headRefOid -q ".headRefOid")
+          echo "pr_head_sha=$PR_SHA" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Remove eyes reaction
         uses: octokit/request-action@b91aabaa861c777dcdb14e2387e30eddf04619ae #v3
         with:
