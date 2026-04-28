@@ -7,12 +7,8 @@ on:
         description: "The workflow run ID from stage one (migration_checks) to download artifacts from"
         required: true
         type: string
-      possible_migration_message:
-        description: "Comment body posted when database files change but no migrations are detected"
-        required: true
-        type: string
-      migration_reminder:
-        description: "Comment body posted when migration files are detected"
+      migration_docs_url:
+        description: "URL to the repository's migration documentation"
         required: true
         type: string
 
@@ -64,7 +60,10 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           issue-number: ${{ needs.download.outputs.pr_number }}
-          body: ${{ inputs.possible_migration_message }}
+          body: |
+            :bell: Changes in database files detected :bell:
+            Do these changes require **adding new migrations**? :thinking: In that case follow [these steps](${{ inputs.migration_docs_url }}).
+            If you are uncertain, ask a database admin on the team :smile:
 
   notify_migration_changes:
     needs: download
@@ -84,7 +83,9 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           issue-number: ${{ needs.download.outputs.pr_number }}
-          body: ${{ inputs.migration_reminder }}
+          body: |
+            :bell: Migrations changes detected :bell:
+            :mega: Remember to comment "/UpdateDatabase" after review approval for migrations to take effect!
 
       - name: Add label
         run: gh pr edit "$NUMBER" --add-label "database-change"
