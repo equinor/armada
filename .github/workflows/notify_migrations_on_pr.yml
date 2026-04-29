@@ -26,10 +26,11 @@ jobs:
       migrations_changed: ${{ steps.read.outputs.migrations_changed }}
     steps:
       - name: Download artifact
-        uses: dawidd6/action-download-artifact@20319c5641d495c8a52e688b7dc5fada6c3a9fbc #v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c #v8
         with:
-          run_id: ${{ inputs.stage_one_workflow_run_id }}
+          run-id: ${{ inputs.stage_one_workflow_run_id }}
           name: migration-check-results
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Read results
         id: read
