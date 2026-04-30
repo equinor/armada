@@ -33,6 +33,7 @@ def create_isar_robot_container(
     blob_storage_connection_string_data: str = "",
     blob_storage_connection_string_metadata: str = "",
     should_fail_normal_task: bool = False,
+    test_id: str = "",
 ) -> StreamLoggingDockerContainer:
 
     failure_prob = 0.0
@@ -41,7 +42,7 @@ def create_isar_robot_container(
 
     container: StreamLoggingDockerContainer = (
         StreamLoggingDockerContainer(image=image)
-        .with_name(name)
+        .with_name(f"{name}-{test_id}")
         .with_exposed_ports(port)
         .with_network(network)
         .with_network_aliases(alias)

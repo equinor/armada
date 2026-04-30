@@ -30,7 +30,7 @@ class FlotillaStorage:
 
 
 def create_azurite_container(
-    network: Network, name: str = "azurite"
+    network: Network, name: str = "azurite", test_id: str = ""
 ) -> StreamLoggingDockerContainer:
     # Command binds services to 0.0.0.0 so Docker can map ports
     cmd: str = (
@@ -41,7 +41,7 @@ def create_azurite_container(
 
     container: StreamLoggingDockerContainer = (
         StreamLoggingDockerContainer(image=settings.AZURITE_IMAGE, command=cmd)
-        .with_name(name)
+        .with_name(f"{name}-{test_id}")
         .with_network(network)
         .with_network_aliases(name)
         .with_exposed_ports(10000)

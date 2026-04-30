@@ -21,6 +21,7 @@ class Armada:
     def __init__(self) -> None:
         self.network: Network | None = None
         self.keyvault: Keyvault | None = None
+        self.test_id: str = ""
         self.flotilla_database: FlotillaDatabase | None = None
         self.flotilla_broker: FlotillaBroker | None = None
         self.flotilla_backend: FlotillaBackend | None = None

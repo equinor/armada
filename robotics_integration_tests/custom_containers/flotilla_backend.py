@@ -29,10 +29,11 @@ def create_flotilla_backend_container(
     name: str = "flotilla_backend",
     port: int = 8000,
     alias: str = "flotilla_backend",
+    test_id: str = "",
 ) -> StreamLoggingDockerContainer:
     container: StreamLoggingDockerContainer = (
         StreamLoggingDockerContainer(image=image)
-        .with_name(name)
+        .with_name(f"{name}-{test_id}")
         .with_exposed_ports(port)
         .with_network(network)
         .with_network_aliases(alias)
