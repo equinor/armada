@@ -1,3 +1,4 @@
+import subprocess
 import time
 from contextlib import ExitStack
 from datetime import datetime
@@ -56,6 +57,54 @@ from robotics_integration_tests.utilities.keyvault import Keyvault
 from robotics_integration_tests.utilities.sara_backend_api import (
     wait_for_sara_to_be_responsive,
 )
+
+
+def _pull_latest_images() -> None:
+    """Pull the latest versions of all container images used by the integration tests.
+
+    Images that are run with platform="linux/amd64" are pulled with the
+    --platform flag so that Docker fetches the correct manifest on Apple
+    Silicon hosts instead of silently falling back to a stale cached image.
+    """
+    amd64_images = [
+        settings.FLOTILLA_BACKEND_IMAGE,
+        settings.FLOTILLA_BROKER_IMAGE,
+        settings.ISAR_ROBOT_IMAGE,
+        settings.SARA_IMAGE,
+    ]
+    native_images = [
+        settings.POSTGRESQL_IMAGE,
+        settings.AZURITE_IMAGE,
+    ]
+
+    for image in amd64_images:
+        logger.info(f"Pulling image (linux/amd64): {image}")
+        result = subprocess.run(
+            ["docker", "pull", "--platform", "linux/amd64", image],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            logger.warning(f"Failed to pull {image}: {result.stderr.strip()}")
+        else:
+            logger.info(f"Successfully pulled {image}")
+
+    for image in native_images:
+        logger.info(f"Pulling image: {image}")
+        result = subprocess.run(
+            ["docker", "pull", image],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            logger.warning(f"Failed to pull {image}: {result.stderr.strip()}")
+        else:
+            logger.info(f"Successfully pulled {image}")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def pull_latest_images():
+    _pull_latest_images()
 
 
 @pytest.fixture
