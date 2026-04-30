@@ -125,4 +125,4 @@ jobs:
           SARA_AZURE_CLIENT_SECRET: ${{ env.SARA_AZURE_CLIENT_SECRET }}
           SARA_MQTT_PASSWORD: ${{ env.SARA_MQTT_PASSWORD }}
 
-        run: uv run --frozen pytest -s robotics_integration_tests
+        run: uv run --frozen pytest -s -n auto robotics_integration_tests

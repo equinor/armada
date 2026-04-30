@@ -13,7 +13,7 @@ class FlotillaDatabase:
         self.alias: str = alias
 
 
-def create_postgres_container(network: Network) -> PostgresContainer:
+def create_postgres_container(network: Network, name: str = "flotilla_postgres", test_id: str = "") -> PostgresContainer:
     container: PostgresContainer = (
         PostgresContainer(
             image=settings.POSTGRESQL_IMAGE,
@@ -21,7 +21,7 @@ def create_postgres_container(network: Network) -> PostgresContainer:
             password=settings.DB_PASSWORD,
             dbname=settings.DB_ALIAS,
         )
-        .with_name(settings.DB_ALIAS)
+        .with_name(f"{name}-{test_id}")
         .with_exposed_ports(5432)
         .with_network(network)
         .with_network_aliases(settings.DB_ALIAS)
@@ -39,7 +39,7 @@ class SaraDatabase:
         self.alias: str = alias
 
 
-def create_sara_postgres_container(network: Network) -> PostgresContainer:
+def create_sara_postgres_container(network: Network, name: str = "sara_postgres", test_id: str = "") -> PostgresContainer:
     container: PostgresContainer = (
         PostgresContainer(
             image=settings.POSTGRESQL_IMAGE,
@@ -47,7 +47,7 @@ def create_sara_postgres_container(network: Network) -> PostgresContainer:
             password=settings.SARA_DB_PASSWORD,
             dbname=settings.SARA_DB_ALIAS,
         )
-        .with_name(settings.SARA_DB_ALIAS)
+        .with_name(f"{name}-{test_id}")
         .with_exposed_ports(5432)
         .with_network(network)
         .with_network_aliases(settings.SARA_DB_ALIAS)

@@ -20,11 +20,12 @@ def create_flotilla_broker_container(
     name: str = "flotilla_broker",
     port: int = 1883,
     alias: str = "broker",  # Must be named "broker" due to the certificate expecting this name
+    test_id: str = "",
 ) -> DockerContainer:
     container: DockerContainer = (
         DockerContainer(image=image)
         .with_kwargs(platform="linux/amd64")
-        .with_name(name)
+        .with_name(f"{name}-{test_id}")
         .with_exposed_ports(port)
         .with_network(network=network)
         .with_network_aliases(alias)

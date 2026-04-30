@@ -1,5 +1,6 @@
 import subprocess
 import time
+import uuid
 from contextlib import ExitStack
 from datetime import datetime
 from typing import Dict
@@ -53,7 +54,7 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
     populate_database_with_minimum_models,
     wait_for_database_to_be_populated,
 )
-from robotics_integration_tests.utilities.keyvault import Keyvault
+from robotics_integration_tests.utilities.keyvault import Keyvault, ScopedKeyvault
 from robotics_integration_tests.utilities.sara_backend_api import (
     wait_for_sara_to_be_responsive,
 )
@@ -108,15 +109,23 @@ def pull_latest_images():
 
 
 @pytest.fixture
-def keyvault():
-    keyvault: Keyvault = Keyvault(
+def test_id():
+    return uuid.uuid4().hex[:8]
+
+
+@pytest.fixture
+def keyvault(test_id: str):
+    scoped_keyvault: ScopedKeyvault = ScopedKeyvault(
+        prefix=test_id,
         keyvault_name=settings.KEYVAULT_NAME,
         client_secret=settings.FLOTILLA_AZURE_CLIENT_SECRET,
         client_id=settings.FLOTILLA_AZURE_CLIENT_ID,
         tenant_id=settings.AZURE_TENANT_ID,
     )
 
-    yield keyvault
+    yield scoped_keyvault
+
+    scoped_keyvault.cleanup()
 
 
 @pytest.fixture
@@ -126,8 +135,8 @@ def network():
 
 
 @pytest.fixture
-def flotilla_database(network: Network, keyvault: Keyvault):
-    with create_postgres_container(network) as database:
+def flotilla_database(network: Network, keyvault: Keyvault, test_id: str):
+    with create_postgres_container(network, test_id=test_id) as database:
         wait_for_port_mapping_to_be_available(container=database, port=5432)
         logger.info(
             f"Postgres URL: {database.get_connection_url()}, "
@@ -142,6 +151,7 @@ def flotilla_database(network: Network, keyvault: Keyvault):
         with create_migrations_runner_container(
             network=network,
             postgres_connection_string=connection_string,
+            test_id=test_id,
         ) as migrations_runner:
             # Block until the container exits; returns {"StatusCode": int}
             result = migrations_runner.get_wrapped_container().wait()
@@ -164,8 +174,8 @@ def flotilla_database(network: Network, keyvault: Keyvault):
 
 
 @pytest.fixture
-def sara_database(network: Network, keyvault: Keyvault):
-    with create_sara_postgres_container(network) as database:
+def sara_database(network: Network, keyvault: Keyvault, test_id: str):
+    with create_sara_postgres_container(network, test_id=test_id) as database:
         wait_for_port_mapping_to_be_available(container=database, port=5432)
         logger.info(
             f"Postgres URL: {database.get_connection_url()}, "
@@ -180,6 +190,7 @@ def sara_database(network: Network, keyvault: Keyvault):
         with create_sara_migrations_runner_container(
             network=network,
             postgres_connection_string=connection_string,
+            test_id=test_id,
         ) as migrations_runner:
             # Block until the container exits; returns {"StatusCode": int}
             result = migrations_runner.get_wrapped_container().wait()
@@ -202,13 +213,17 @@ def sara_database(network: Network, keyvault: Keyvault):
 
 
 @pytest.fixture
-def flotilla_storage(network: Network, keyvault: Keyvault):
+def flotilla_storage(network: Network, keyvault: Keyvault, test_id: str):
     with ExitStack() as stack:
         azurite_containers: Dict[str, AzuriteStorageContainer] = {}
 
         for azurite_container_alias in settings.AZURITE_ALIASES:
             container: StreamLoggingDockerContainer = stack.enter_context(
-                create_azurite_container(network=network, name=azurite_container_alias)
+                create_azurite_container(
+                    network=network,
+                    name=azurite_container_alias,
+                    test_id=test_id,
+                )
             )
 
             wait_for_port_mapping_to_be_available(container=container, port=10000)
@@ -248,13 +263,14 @@ def flotilla_storage(network: Network, keyvault: Keyvault):
 
 
 @pytest.fixture
-def flotilla_broker(network: Network):
+def flotilla_broker(network: Network, test_id: str):
     with create_flotilla_broker_container(
         network=network,
         image=settings.FLOTILLA_BROKER_IMAGE,
         name=settings.FLOTILLA_BROKER_NAME,
         port=settings.FLOTILLA_BROKER_PORT,
         alias=settings.FLOTILLA_BROKER_ALIAS,
+        test_id=test_id,
     ) as broker:
         wait_for_port_mapping_to_be_available(
             container=broker, port=settings.FLOTILLA_BROKER_PORT
@@ -269,7 +285,9 @@ def flotilla_broker(network: Network):
 
 
 @pytest.fixture
-def flotilla_backend(network: Network, flotilla_database: FlotillaDatabase):
+def flotilla_backend(
+    network: Network, flotilla_database: FlotillaDatabase, test_id: str
+):
     with create_flotilla_backend_container(
         network=network,
         database_connection_string=flotilla_database.connection_string,
@@ -277,6 +295,7 @@ def flotilla_backend(network: Network, flotilla_database: FlotillaDatabase):
         name=settings.FLOTILLA_BACKEND_NAME,
         port=settings.FLOTILLA_BACKEND_PORT,
         alias=settings.FLOTILLA_BACKEND_ALIAS,
+        test_id=test_id,
     ) as flotilla_backend:
         wait_for_port_mapping_to_be_available(
             container=flotilla_backend, port=settings.FLOTILLA_BACKEND_PORT
@@ -297,7 +316,7 @@ def flotilla_backend(network: Network, flotilla_database: FlotillaDatabase):
 
 
 @pytest.fixture
-def sara(network: Network, sara_database: SaraDatabase):
+def sara(network: Network, sara_database: SaraDatabase, test_id: str):
     with create_sara_container(
         network=network,
         database_connection_string=sara_database.connection_string,
@@ -305,6 +324,7 @@ def sara(network: Network, sara_database: SaraDatabase):
         name=settings.SARA_NAME,
         port=settings.SARA_PORT,
         alias=settings.SARA_ALIAS,
+        test_id=test_id,
     ) as sara_container:
         wait_for_port_mapping_to_be_available(
             container=sara_container, port=settings.SARA_PORT
@@ -326,6 +346,7 @@ def sara(network: Network, sara_database: SaraDatabase):
 def armada_without_robots(
     keyvault: Keyvault,
     network: Network,
+    test_id: str,
     flotilla_broker: FlotillaBroker,
     flotilla_database: FlotillaDatabase,
     flotilla_backend: FlotillaBackend,
@@ -337,6 +358,7 @@ def armada_without_robots(
 
     armada.keyvault = keyvault
     armada.network = network
+    armada.test_id = test_id
     armada.sara_database = sara_database
     armada.sara = sara
     armada.flotilla_database = flotilla_database
@@ -362,6 +384,7 @@ def armada_with_single_successful_robot(armada_without_robots: Armada):
         blob_storage_connection_string_metadata=armada.keyvault.get_secret(
             "AZURE-STORAGE-CONNECTION-STRING-METADATA"
         ).value,
+        test_id=armada.test_id,
     ) as isar_robot:
 
         robot_id, installation_code_for_robot = setup_robot_in_flotilla(
@@ -398,6 +421,7 @@ def armada_with_single_failing_robot(armada_without_robots: Armada):
             "AZURE-STORAGE-CONNECTION-STRING-METADATA"
         ).value,
         should_fail_normal_task=True,
+        test_id=armada.test_id,
     ) as isar_robot:
 
         robot_id, installation_code_for_robot = setup_robot_in_flotilla(

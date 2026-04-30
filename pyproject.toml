@@ -28,3 +28,8 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["robotics_integration_tests"]
+
+[dependency-groups]
+dev = [
+    "pytest-xdist>=3.8.0",
+]

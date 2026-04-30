@@ -29,10 +29,11 @@ def create_sara_container(
     name: str = "sara",
     port: int = 8100,
     alias: str = "sara",
+    test_id: str = "",
 ) -> StreamLoggingDockerContainer:
     container: StreamLoggingDockerContainer = (
         StreamLoggingDockerContainer(image=image)
-        .with_name(name)
+        .with_name(f"{name}-{test_id}")
         .with_exposed_ports(port)
         .with_network(network)
         .with_network_aliases(alias)
