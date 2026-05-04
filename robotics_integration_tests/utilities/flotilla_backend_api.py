@@ -549,6 +549,114 @@ def wait_for_robot_status(
             continue
 
 
+def wait_for_all_mission_run_statuses(
+    backend_url: str,
+    mission_run_expectations: Dict[str, str],
+    timeout: int = 60,
+) -> Dict[str, Dict]:
+    """Poll all mission runs in a single loop until each reaches its expected
+    status, or *timeout* seconds have elapsed.
+
+    *mission_run_expectations* maps mission-run IDs to their expected status
+    strings, e.g. ``{"run-1": "Successful", "run-2": "Failed"}``.
+
+    Returns a dict mapping each mission-run ID to its final mission-run dict.
+    """
+    remaining: Dict[str, str] = dict(mission_run_expectations)
+    results: Dict[str, Dict] = {}
+    start_time: datetime = datetime.now()
+
+    while remaining:
+        if datetime.now() - start_time > timedelta(seconds=timeout):
+            raise RuntimeError(
+                f"Mission runs did not reach expected statuses within {timeout}s. "
+                f"Still waiting for: {remaining}"
+            )
+
+        for mission_run_id, expected_status in list(remaining.items()):
+            try:
+                mission_run: Dict = get_mission_run_by_id(
+                    backend_url=backend_url, mission_run_id=mission_run_id
+                )
+            except Exception:
+                logger.warning(
+                    f"Failed to retrieve mission run {mission_run_id}, will retry..."
+                )
+                continue
+
+            current_status: str = mission_run.get("status")
+            if current_status == expected_status:
+                logger.info(
+                    f"Mission run '{mission_run_id}' reached expected status '{expected_status}'"
+                )
+                results[mission_run_id] = mission_run
+                del remaining[mission_run_id]
+            else:
+                logger.info(
+                    f"Mission run '{mission_run_id}' is in status '{current_status}', "
+                    f"waiting for '{expected_status}'"
+                )
+
+        if remaining:
+            time.sleep(1)
+
+    return results
+
+
+def wait_for_all_robot_statuses(
+    backend_url: str,
+    robot_status_expectations: Dict[str, str],
+    timeout: int = 60,
+) -> Dict[str, Dict]:
+    """Poll all robots in a single loop until each reaches its expected status,
+    or *timeout* seconds have elapsed.
+
+    *robot_status_expectations* maps robot names to their expected status
+    strings, e.g. ``{"RobotA": "Home", "RobotB": "InterventionNeeded"}``.
+
+    Returns a dict mapping each robot name to its final robot dict.
+    """
+    remaining: Dict[str, str] = dict(robot_status_expectations)
+    results: Dict[str, Dict] = {}
+    start_time: datetime = datetime.now()
+
+    while remaining:
+        if datetime.now() - start_time > timedelta(seconds=timeout):
+            raise RuntimeError(
+                f"Robots did not reach expected statuses within {timeout}s. "
+                f"Still waiting for: {remaining}"
+            )
+
+        for robot_name, expected_status in list(remaining.items()):
+            try:
+                robot: Dict = get_robot_by_name(
+                    backend_url=backend_url, name=robot_name
+                )
+            except Exception:
+                logger.warning(
+                    f"Failed to retrieve robot '{robot_name}', will retry..."
+                )
+                continue
+
+            current_status: str = robot.get("status")
+            if current_status == expected_status:
+                logger.info(
+                    f"Robot '{robot_name}' reached expected status '{expected_status}'"
+                )
+                results[robot_name] = robot
+                del remaining[robot_name]
+            else:
+                logger.info(
+                    f"Robot '{robot_name}' is in status '{current_status}', "
+                    f"waiting for '{expected_status}'"
+                )
+
+        if remaining:
+            time.sleep(1)
+
+    return results
+
+
 def pause_mission(backend_url: str, robot_id: str) -> None:
     url: str = f"{backend_url}/robots/{robot_id}/pause"
     response: Response = requests.post(
