@@ -44,6 +44,10 @@ from robotics_integration_tests.custom_containers.sara import (
     Sara,
     create_sara_container,
 )
+from robotics_integration_tests.custom_containers.teams_webhook_receiver import (
+    TeamsWebhookReceiver,
+    create_teams_webhook_receiver_container,
+)
 from robotics_integration_tests.custom_containers.stream_logging_docker_container import (
     StreamLoggingDockerContainer,
 )
@@ -437,6 +441,103 @@ def armada_with_single_failing_robot(armada_without_robots: Armada):
             alias=settings.ISAR_ROBOT_ALIAS,
             installation_code=installation_code_for_robot,
         )
+        armada.log_startup_info()
+        yield armada
+
+
+@pytest.fixture
+def armada_with_multiple_robots(armada_without_robots: Armada):
+    """Spin up four ISAR robot containers with different mission/return-home
+    behaviour to test parallel multi-robot scenarios.
+
+    Robot configurations:
+        1. MissionOkThenHome – mission succeeds, returns home successfully
+        2. MissionOkThenLost – mission succeeds, fails to return home
+        3. MissionFailThenHome – mission fails, returns home successfully
+        4. MissionFailThenLost – mission fails, fails to return home
+    """
+    armada: Armada = armada_without_robots
+    blob_conn_data: str = armada.keyvault.get_secret(
+        "AZURE-STORAGE-CONNECTION-STRING-DATA"
+    ).value
+    blob_conn_metadata: str = armada.keyvault.get_secret(
+        "AZURE-STORAGE-CONNECTION-STRING-METADATA"
+    ).value
+
+    webhook_container, webhook_receiver = create_teams_webhook_receiver_container(
+        network=armada.network,
+        test_id=armada.test_id,
+    )
+
+    robot_configs = [
+        {
+            "name": "MissionOkThenHome",
+            "alias": "isar_mission_ok_then_home",
+            "should_fail_normal_task": False,
+            "should_fail_return_home": False,
+        },
+        {
+            "name": "MissionOkThenLost",
+            "alias": "isar_mission_ok_then_lost",
+            "should_fail_normal_task": False,
+            "should_fail_return_home": True,
+        },
+        {
+            "name": "MissionFailThenHome",
+            "alias": "isar_mission_fail_then_home",
+            "should_fail_normal_task": True,
+            "should_fail_return_home": False,
+        },
+        {
+            "name": "MissionFailThenLost",
+            "alias": "isar_mission_fail_then_lost",
+            "should_fail_normal_task": True,
+            "should_fail_return_home": True,
+        },
+    ]
+
+    with ExitStack() as stack:
+        stack.enter_context(webhook_container)
+        wait_for_port_mapping_to_be_available(
+            container=webhook_container, port=webhook_receiver.port
+        )
+        armada.teams_webhook_receiver = webhook_receiver
+
+        for cfg in robot_configs:
+            container = stack.enter_context(
+                create_isar_robot_container(
+                    network=armada.network,
+                    image=settings.ISAR_ROBOT_IMAGE,
+                    name=cfg["name"],
+                    port=settings.ISAR_ROBOT_PORT,
+                    alias=cfg["alias"],
+                    blob_storage_connection_string_data=blob_conn_data,
+                    blob_storage_connection_string_metadata=blob_conn_metadata,
+                    should_fail_normal_task=cfg["should_fail_normal_task"],
+                    should_fail_return_home=cfg["should_fail_return_home"],
+                    return_home_retry_limit=1,
+                    test_id=armada.test_id,
+                )
+            )
+
+            wait_for_port_mapping_to_be_available(
+                container=container, port=settings.ISAR_ROBOT_PORT
+            )
+
+            robot_id, installation_code = setup_robot_in_flotilla(
+                backend_url=armada.flotilla_backend.backend_url,
+                robot_name=cfg["name"],
+            )
+
+            armada.robots[cfg["name"]] = IsarRobot(
+                container=container,
+                name=cfg["name"],
+                robot_id=robot_id,
+                port=settings.ISAR_ROBOT_PORT,
+                alias=cfg["alias"],
+                installation_code=installation_code,
+            )
+
         armada.log_startup_info()
         yield armada
 

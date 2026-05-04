@@ -1,3 +1,5 @@
+import uuid
+
 from docker.models.networks import Network
 
 from robotics_integration_tests.custom_containers.stream_logging_docker_container import (
@@ -33,12 +35,18 @@ def create_isar_robot_container(
     blob_storage_connection_string_data: str = "",
     blob_storage_connection_string_metadata: str = "",
     should_fail_normal_task: bool = False,
+    should_fail_return_home: bool = False,
+    return_home_retry_limit: int = 5,
     test_id: str = "",
 ) -> StreamLoggingDockerContainer:
 
     failure_prob = 0.0
     if should_fail_normal_task:
         failure_prob = 1.0
+
+    return_home_failure_prob = 0.0
+    if should_fail_return_home:
+        return_home_failure_prob = 1.0
 
     container: StreamLoggingDockerContainer = (
         StreamLoggingDockerContainer(image=image)
@@ -66,9 +74,16 @@ def create_isar_robot_container(
         .with_env("ISAR_BLOB_CONTAINER", "hua")
         .with_env("ISAR_PLANT_CODE", "Huldra")
         .with_env("ISAR_PLANT_SHORT_NAME", "HUA")
-        .with_env("ISAR_API_HOST_VIEWED_EXTERNALLY", "isar_robot")
+        .with_env("ISAR_API_HOST_VIEWED_EXTERNALLY", alias)
+        .with_env("ISAR_ROBOT_NAME", name)
         .with_env("MISSION_SIMULATION_TIME_TO_START", 2)
         .with_env("ROBOT_MISSION_SIMULATION_TASK_FAILURE_PROBABILITY", failure_prob)
+        .with_env(
+            "ROBOT_MISSION_SIMULATION_RETURN_HOME_TASK_FAILURE_PROBABILITY",
+            return_home_failure_prob,
+        )
         .with_env("ROBOT_MISSION_SIMULATION_MISSION_COMPLETION_DELAY", 5)
+        .with_env("ISAR_RETURN_HOME_RETRY_LIMIT", return_home_retry_limit)
+        .with_env("ISAR_ISAR_ID", str(uuid.uuid4()))
     )
     return container
