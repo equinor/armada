@@ -37,6 +37,7 @@ def create_isar_robot_container(
     should_fail_normal_task: bool = False,
     should_fail_return_home: bool = False,
     return_home_retry_limit: int = 5,
+    should_start_at_home: bool = False,
     test_id: str = "",
 ) -> StreamLoggingDockerContainer:
 
@@ -84,6 +85,7 @@ def create_isar_robot_container(
         )
         .with_env("ROBOT_MISSION_SIMULATION_MISSION_COMPLETION_DELAY", 5)
         .with_env("ISAR_RETURN_HOME_RETRY_LIMIT", return_home_retry_limit)
+        .with_env("ROBOT_SHOULD_START_AT_HOME", str(should_start_at_home).lower())
         .with_env("ISAR_ISAR_ID", str(uuid.uuid4()))
     )
     return container

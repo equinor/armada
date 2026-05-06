@@ -450,7 +450,14 @@ def armada_with_multiple_robots(armada_without_robots: Armada):
     """Spin up four ISAR robot containers with different mission/return-home
     behaviour to test parallel multi-robot scenarios.
 
-    Robot configurations:
+    All robots are configured with ``ROBOT_SHOULD_START_AT_HOME=true`` so they
+    boot directly into ISAR's ``Home`` state, skipping the bootstrap
+    return-home cycle. Without this, robots configured to fail return-home
+    would race the test: the boot return-home would fail and put them into
+    ``InterventionNeeded`` before the test had a chance to schedule the echo
+    mission, making the mission un-dispatchable.
+
+    Robot configurations (mission and post-mission return-home outcomes):
         1. MissionOkThenHome – mission succeeds, returns home successfully
         2. MissionOkThenLost – mission succeeds, fails to return home
         3. MissionFailThenHome – mission fails, returns home successfully
@@ -475,24 +482,28 @@ def armada_with_multiple_robots(armada_without_robots: Armada):
             "alias": "isar_mission_ok_then_home",
             "should_fail_normal_task": False,
             "should_fail_return_home": False,
+            "should_start_at_home": True,
         },
         {
             "name": "MissionOkThenLost",
             "alias": "isar_mission_ok_then_lost",
             "should_fail_normal_task": False,
             "should_fail_return_home": True,
+            "should_start_at_home": True,
         },
         {
             "name": "MissionFailThenHome",
             "alias": "isar_mission_fail_then_home",
             "should_fail_normal_task": True,
             "should_fail_return_home": False,
+            "should_start_at_home": True,
         },
         {
             "name": "MissionFailThenLost",
             "alias": "isar_mission_fail_then_lost",
             "should_fail_normal_task": True,
             "should_fail_return_home": True,
+            "should_start_at_home": True,
         },
     ]
 
@@ -516,6 +527,7 @@ def armada_with_multiple_robots(armada_without_robots: Armada):
                     should_fail_normal_task=cfg["should_fail_normal_task"],
                     should_fail_return_home=cfg["should_fail_return_home"],
                     return_home_retry_limit=1,
+                    should_start_at_home=cfg["should_start_at_home"],
                     test_id=armada.test_id,
                 )
             )
