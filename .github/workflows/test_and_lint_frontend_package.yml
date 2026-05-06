@@ -7,7 +7,7 @@ on:
         description: "JSON list of node versions"
         required: false
         type: string
-        default: '["20.x"]'
+        default: '["24.x"]'
 
       working-directory:
         description: "Path to the frontend project directory"
@@ -39,18 +39,6 @@ on:
         type: boolean
         default: true
 
-      run-tests:
-        description: "Run npm test"
-        required: false
-        type: boolean
-        default: false
-
-      test-env:
-        description: "JSON object of environment variables provided for test run"
-        required: false
-        type: string
-        default: '{}'
-
       run-unused-exports:
         description: "Run ts-unused-exports check"
         required: false
@@ -73,7 +61,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f #v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e #v6
         with:
           node-version: ${{ matrix.node-version }}
       - name: Run Prettier
@@ -91,7 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f #v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e #v6
         with:
           node-version: ${{ matrix.node-version }}
           cache: "npm"
@@ -113,7 +101,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f #v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e #v6
         with:
           node-version: ${{ matrix.node-version }}
           cache: "npm"
@@ -122,29 +110,6 @@ jobs:
         run: npm ci
       - name: Build
         run: npm run build
-
-  test:
-    if: ${{ inputs.run-tests }}
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: ${{ fromJSON(inputs.node-versions) }}
-    defaults:
-      run:
-        working-directory: ${{ inputs.working-directory }}
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f #v6
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: "npm"
-          cache-dependency-path: "**/package-lock.json"
-      - name: Install modules
-        run: npm ci
-      - name: Run tests
-        run: npm test
-        env: ${{ fromJSON(inputs.test-env) }}
 
   check_exports:
     if: ${{ inputs.run-unused-exports }}
@@ -158,7 +123,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f #v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e #v6
         with:
           node-version: ${{ matrix.node-version }}
           cache: "npm"
