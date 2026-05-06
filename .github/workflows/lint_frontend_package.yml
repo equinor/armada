@@ -27,12 +27,6 @@ on:
         type: boolean
         default: true
 
-      eslint-target:
-        description: "Target path for eslint"
-        required: false
-        type: string
-        default: "."
-
       run-build:
         description: "Run npm build"
         required: false
@@ -64,8 +58,12 @@ jobs:
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e #v6
         with:
           node-version: ${{ matrix.node-version }}
+          cache: "npm"
+          cache-dependency-path: "**/package-lock.json"
+      - name: Install modules
+        run: npm ci
       - name: Run Prettier
-        run: npx prettier --check .
+        run: npm run prettier_check
 
   run_eslint:
     if: ${{ inputs.run-eslint }}
@@ -87,7 +85,7 @@ jobs:
       - name: Install modules
         run: npm ci
       - name: Run ESLint
-        run: npx eslint ${{ inputs.eslint-target }}
+        run: npm run lint
 
   build:
     if: ${{ inputs.run-build }}
