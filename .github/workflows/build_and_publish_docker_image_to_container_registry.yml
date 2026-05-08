@@ -86,6 +86,9 @@ jobs:
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf #v6
         with:
           images: ${{ inputs.registry }}/${{ inputs.image_name }}
+          tags: |
+            type=raw,value=${{ inputs.tag }}
+            type=raw,value=${{ inputs.secondary_tag }},enable=${{ inputs.secondary_tag != '' }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 #v7
@@ -93,9 +96,7 @@ jobs:
           context: ${{ inputs.path_to_context }}
           file: ${{ inputs.path_to_dockerfile }}
           push: true
-          tags: |
-            ${{ inputs.registry }}/${{ inputs.image_name }}:${{ inputs.tag }}
-            ${{ inputs.registry }}/${{ inputs.image_name }}:${{ inputs.secondary_tag }}
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           secrets: ${{ secrets.anymal_download_password != '' && format('ANYMAL_DOWNLOAD_PASSWORD_SECRET={0}', secrets.anymal_download_password) || '' }}
           build-args: ${{ secrets.anymal_download_username != '' && format('ANYMAL_DOWNLOAD_USER_NAME={0}', secrets.anymal_download_username) || '' }}
