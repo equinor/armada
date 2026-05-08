@@ -1,0 +1,81 @@
+# Validates EF Core migrations against a real PostgreSQL container to catch provider-specific SQL errors.
+# Runs "dotnet ef database update" to ensure the full migration history applies successfully.
+
+name: Validate dotnet migrations against temporary database
+
+on:
+  workflow_call:
+    inputs:
+      dotnet_version:
+        description: ".NET SDK version to use"
+        required: false
+        type: string
+        default: "10.0.x"
+
+      working_directory:
+        description: "Directory containing the .NET project/solution to validate (Ex: 'api')"
+        required: true
+        type: string
+
+# Permissions must be provided from calling workflow
+permissions:
+  contents: read
+
+jobs:
+  validate-migrations-temp-database:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    # Set up temporary database
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: sara_test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 #v5
+        with:
+          dotnet-version: ${{ inputs.dotnet_version }}
+
+      - name: Install dotnet ef tool
+        run: |
+          DOTNET_EF_VERSION="${{ inputs.dotnet_version }}"
+          DOTNET_EF_VERSION="${DOTNET_EF_VERSION/x/*}"
+          dotnet tool install -g dotnet-ef --version "${DOTNET_EF_VERSION}"
+
+      - name: Build API
+        working-directory: ${{ inputs.working_directory }}
+        run: dotnet build
+
+      # Checking has-pending-model-changes should check if there are other changes that are not in the migrations
+      # This could be the case if two migrations are worked on in parallel and one is merged before the other, 
+      # causing the second to have pending model changes that are not yet in a migration after rebase
+      - name: Check for Pending Model Changes
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          Database__postgresConnectionString: "Host=localhost;Port=5432;Database=sara_test_db;Username=postgres;Password=password;Include Error Detail=true"
+          ASPNETCORE_ENVIRONMENT: "Development"
+        run: dotnet ef migrations has-pending-model-changes
+
+      - name: Run migrations against temporary database
+        working-directory: ${{ inputs.working_directory }}
+        env:
+          Database__postgresConnectionString: "Host=localhost;Port=5432;Database=sara_test_db;Username=postgres;Password=password;Include Error Detail=true"
+          ASPNETCORE_ENVIRONMENT: "Development"
+        run: |
+          dotnet ef database update --no-build --verbose
