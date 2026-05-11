@@ -83,7 +83,7 @@ jobs:
           issue-number: ${{ needs.download.outputs.pr_number }}
           body: |
             :bell: Migrations changes detected :bell:
-            :mega: Remember to comment "/UpdateDatabase" after review approval for migrations to take effect!
+            :mega: After this PR is merged, remember to apply the migrations to the Development database by manually running the "Run database migrations (Development)" workflow from the Actions tab.
 
       - name: Add label
         run: gh pr edit "$NUMBER" --add-label "database-change"
