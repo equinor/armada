@@ -74,4 +74,3 @@ jobs:
           ASPNETCORE_ENVIRONMENT: ${{ vars.AspNetEnvironment }}
           AzureAd__ClientSecret: ${{ secrets.client_id }}
           AzureAd__ClientId: ${{ secrets.client_id }}
-          AzureAd__TenantId: ${{ vars.AZURE_TENANT_ID }}
