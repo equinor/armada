@@ -41,8 +41,8 @@ def wait_for_sara_to_be_responsive(sara_url: str, timeout: int = 60) -> None:
             )
 
         try:
-            analysis_mapping: List[Dict] = _list_database_entries(
-                backend_url=sara_url, request_path="api/AnalysisMapping"
+            analysis_groups: List[Dict] = _list_database_entries(
+                backend_url=sara_url, request_path="api/analysis-group"
             )
         except Exception as e:
             logger.warning(
@@ -51,7 +51,7 @@ def wait_for_sara_to_be_responsive(sara_url: str, timeout: int = 60) -> None:
             time.sleep(1)
             continue
 
-        if len(analysis_mapping) >= 0:
+        if len(analysis_groups) >= 0:
             logger.info("Sara is responsive")
             return
 
