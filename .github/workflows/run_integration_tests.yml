@@ -62,7 +62,6 @@ jobs:
             ISAR-MQTT-PASSWORD
             SARA-AZURE-CLIENT-SECRET
             SARA-MQTT-PASSWORD
-            FLOTILLA-TEAMS-NOTIFICATION-WEBHOOK-URL
           )
 
           for name in "${secrets[@]}"; do
