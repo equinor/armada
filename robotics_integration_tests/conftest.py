@@ -289,13 +289,29 @@ def flotilla_broker(network: Network, test_id: str):
 
 
 @pytest.fixture
+def teams_webhook_receiver(network: Network, test_id: str):
+    container, receiver = create_teams_webhook_receiver_container(
+        network=network,
+        test_id=test_id,
+    )
+    with container:
+        wait_for_port_mapping_to_be_available(
+            container=container, port=receiver.port
+        )
+        yield receiver
+
+
+@pytest.fixture
 def flotilla_backend(
-    network: Network, flotilla_database: FlotillaDatabase, test_id: str
+    network: Network,
+    flotilla_database: FlotillaDatabase,
+    teams_webhook_receiver: TeamsWebhookReceiver,
+    test_id: str,
 ):
     with create_flotilla_backend_container(
         network=network,
         database_connection_string=flotilla_database.connection_string,
-        teams_notification_webhook_url=settings.FLOTILLA_TEAMS_NOTIFICATION_WEBHOOK_URL,
+        teams_notification_webhook_url=teams_webhook_receiver.internal_url,
         image=settings.FLOTILLA_BACKEND_IMAGE,
         name=settings.FLOTILLA_BACKEND_NAME,
         port=settings.FLOTILLA_BACKEND_PORT,
@@ -358,6 +374,7 @@ def armada_without_robots(
     sara_database: SaraDatabase,
     sara: Sara,
     flotilla_storage: FlotillaStorage,
+    teams_webhook_receiver: TeamsWebhookReceiver,
 ):
     armada: Armada = Armada()
 
@@ -370,6 +387,7 @@ def armada_without_robots(
     armada.flotilla_storage = flotilla_storage
     armada.flotilla_broker = flotilla_broker
     armada.flotilla_backend = flotilla_backend
+    armada.teams_webhook_receiver = teams_webhook_receiver
 
     yield armada
 
