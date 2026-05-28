@@ -58,5 +58,5 @@ def test_simple_mission_with_three_tags_is_successful(
 
     wait_for_sara_logs(
         container=armada.sara.container,
-        log_message="Error occurred while triggering anonymizer workflow for InspectionId",
+        log_message="Failed to trigger workflow anonymizer",
     )
