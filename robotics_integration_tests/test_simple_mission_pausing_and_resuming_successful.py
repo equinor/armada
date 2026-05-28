@@ -10,7 +10,9 @@ from robotics_integration_tests.utilities.blob_storage import (
 from robotics_integration_tests.utilities.flotilla_backend_api import (
     pause_mission,
     resume_mission,
-    schedule_echo_mission,
+    create_mission,
+    get_dummy_mission_payload_with_installation,
+    schedule_mission,
     wait_for_mission_run_status,
     wait_for_robot_status,
     wait_for_second_task_status_of_mission_run,
@@ -22,18 +24,18 @@ def test_simple_mission_pausing_and_resuming_successfully(
 ) -> None:
     armada: Armada = armada_with_single_successful_robot
     robot_name, robot = next(iter(armada.robots.items()))
-    echo_mission_id: str = "986"
+    mission_payload: Dict = get_dummy_mission_payload_with_installation(robot.installation_code)
+    mission: Dict = create_mission(backend_url=armada.flotilla_backend.backend_url, payload=mission_payload)
 
-    mission_run: Dict = schedule_echo_mission(
+    mission_run: Dict = schedule_mission(
         backend_url=armada.flotilla_backend.backend_url,
         robot_id=robot.robot_id,
-        mission_id=echo_mission_id,
-        installation_code=robot.installation_code,
+        mission_id=mission["id"],
     )
 
     mission_run_id: str = mission_run.get("id")
     logger.info(
-        f"Scheduled echo mission {echo_mission_id} with id {mission_run_id} on robot {robot_name}"
+        f"Scheduled mission {mission['id']} with id {mission_run_id} on robot {robot_name}"
     )
 
     _ = wait_for_second_task_status_of_mission_run(

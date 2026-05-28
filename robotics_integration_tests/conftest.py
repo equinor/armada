@@ -295,6 +295,7 @@ def flotilla_backend(
     with create_flotilla_backend_container(
         network=network,
         database_connection_string=flotilla_database.connection_string,
+        teams_notification_webhook_url=settings.FLOTILLA_TEAMS_NOTIFICATION_WEBHOOK_URL,
         image=settings.FLOTILLA_BACKEND_IMAGE,
         name=settings.FLOTILLA_BACKEND_NAME,
         port=settings.FLOTILLA_BACKEND_PORT,
