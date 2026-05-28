@@ -25,6 +25,7 @@ class FlotillaBackend:
 def create_flotilla_backend_container(
     network: Network,
     database_connection_string: str,
+    teams_notification_webhook_url: str,
     image: str = "ghcr.io/equinor/flotilla-backend:latest",
     name: str = "flotilla_backend",
     port: int = 8000,
@@ -48,6 +49,5 @@ def create_flotilla_backend_container(
         .with_env("KeyVault__VaultUri", settings.KEYVAULT_URI)
         .with_env("Database__PostgreSqlConnectionString", database_connection_string)
         .with_env("AzureAd__ClientSecret", settings.FLOTILLA_AZURE_CLIENT_SECRET)
-    )
-
+        .with_env("TeamsNotification__WebhookUrl", teams_notification_webhook_url))
     return container

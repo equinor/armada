@@ -12,7 +12,9 @@ from robotics_integration_tests.utilities.blob_storage import (
     wait_for_all_mission_blobs,
 )
 from robotics_integration_tests.utilities.flotilla_backend_api import (
-    schedule_echo_mission,
+    create_mission,
+    get_dummy_mission_payload_with_installation,
+    schedule_mission,
     wait_for_all_mission_run_statuses,
     wait_for_all_robot_statuses,
 )
@@ -35,7 +37,6 @@ def test_multiple_robots_with_different_outcomes(
     """
     armada: Armada = armada_with_multiple_robots
     backend_url: str = armada.flotilla_backend.backend_url
-    echo_mission_id: str = "986"
 
     robot_expectations = {
         "MissionOkThenHome": {
@@ -68,15 +69,16 @@ def test_multiple_robots_with_different_outcomes(
     mission_runs: Dict[str, Dict] = {}
     for robot_name in robot_expectations:
         robot: IsarRobot = armada.robots[robot_name]
-        mission_run: Dict = schedule_echo_mission(
+        mission_payload: Dict = get_dummy_mission_payload_with_installation(robot.installation_code)
+        mission: Dict = create_mission(backend_url=backend_url, payload=mission_payload)
+        mission_run: Dict = schedule_mission(
             backend_url=backend_url,
             robot_id=robot.robot_id,
-            mission_id=echo_mission_id,
-            installation_code=robot.installation_code,
+            mission_id=mission["id"],
         )
         mission_runs[robot_name] = mission_run
         logger.info(
-            f"Scheduled echo mission {echo_mission_id} with id {mission_run['id']} "
+            f"Scheduled mission {mission['id']} with id {mission_run['id']} "
             f"on robot {robot_name}"
         )
 
