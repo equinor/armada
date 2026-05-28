@@ -1,9 +1,18 @@
+import os
 import subprocess
 import time
 import uuid
 from contextlib import ExitStack
 from datetime import datetime
 from typing import Dict
+
+# Disable the testcontainers Reaper (Ryuk) before any testcontainers import.
+# Ryuk is started lazily on the first container.start() call and queries its
+# own port mapping with no retry, which races and fails sporadically when
+# multiple pytest-xdist workers start containers in parallel. The suite
+# already cleans up containers via `with` blocks on every fixture, so the
+# Reaper's defense-in-depth value is minimal here.
+os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 
 import pytest
 from loguru import logger
