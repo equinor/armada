@@ -490,11 +490,6 @@ def armada_with_multiple_robots(armada_without_robots: Armada):
         "AZURE-STORAGE-CONNECTION-STRING-METADATA"
     ).value
 
-    webhook_container, webhook_receiver = create_teams_webhook_receiver_container(
-        network=armada.network,
-        test_id=armada.test_id,
-    )
-
     robot_configs = [
         {
             "name": "MissionOkThenHome",
@@ -527,12 +522,6 @@ def armada_with_multiple_robots(armada_without_robots: Armada):
     ]
 
     with ExitStack() as stack:
-        stack.enter_context(webhook_container)
-        wait_for_port_mapping_to_be_available(
-            container=webhook_container, port=webhook_receiver.port
-        )
-        armada.teams_webhook_receiver = webhook_receiver
-
         for cfg in robot_configs:
             container = stack.enter_context(
                 create_isar_robot_container(
