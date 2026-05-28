@@ -40,7 +40,6 @@ class Settings(BaseSettings):
         default="ghcr.io/equinor/flotilla-backend:latest"
     )
     FLOTILLA_BACKEND_PORT: int = Field(default=8000)
-    FLOTILLA_TEAMS_NOTIFICATION_WEBHOOK_URL: Optional[str] = Field(default="")
 
     # MQTT Broker environment
     FLOTILLA_BROKER_SERVER_KEY: Optional[str] = Field(default="")
