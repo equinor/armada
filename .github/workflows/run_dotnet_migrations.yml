@@ -55,28 +55,14 @@ jobs:
         with:
           ref: ${{ inputs.pr_head_sha || inputs.checkout_ref }}
 
-      - name: Provision GitHub OIDC token for WorkloadIdentityCredential
-        # azure/login is intentionally not used here: it only authenticates the
-        # az CLI and does not write the federated token to a file, which is
-        # what the azure-identity SDK's WorkloadIdentityCredential requires.
-        # We fetch the GitHub Actions OIDC JWT for the audience that the app
-        # registration's federated credential trusts, write it to a file under
-        # RUNNER_TEMP, and export AZURE_FEDERATED_TOKEN_FILE so that the SDK
-        # picks it up. AZURE_CLIENT_ID and AZURE_TENANT_ID are set on the
-        # dotnet ef step below.
-        shell: bash
-        env:
-          AZURE_AD_AUDIENCE: api://AzureADTokenExchange
-        run: |
-          set -euo pipefail
-          TOKEN_FILE="$RUNNER_TEMP/azure-federated-token"
-          AUDIENCE_URLENC=$(jq -nr --arg a "$AZURE_AD_AUDIENCE" '$a|@uri')
-          curl -sSL \
-            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE_URLENC" \
-            | jq -r .value > "$TOKEN_FILE"
-          test -s "$TOKEN_FILE"
-          echo "AZURE_FEDERATED_TOKEN_FILE=$TOKEN_FILE" >> "$GITHUB_ENV"
+      - name: Provision Azure federated token file
+        # See equinor/armada/.github/actions/azure-federated-token for the
+        # rationale on why azure/login is not used here. In short: azure/login
+        # authenticates the az CLI but does not write a federated token file,
+        # which is what the azure-identity SDK's WorkloadIdentityCredential
+        # reads to acquire tokens without a client secret. AZURE_CLIENT_ID and
+        # AZURE_TENANT_ID are set on the dotnet ef step below.
+        uses: equinor/armada/.github/actions/azure-federated-token@main
 
       - name: Set up .NET
         uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 #v5

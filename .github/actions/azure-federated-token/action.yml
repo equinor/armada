@@ -1,0 +1,82 @@
+name: "Provision Azure federated token file"
+description: >-
+  Fetch a GitHub Actions OIDC JWT and write it to a file so that the
+  azure-identity SDK's WorkloadIdentityCredential can authenticate to Entra ID
+  without a client secret. Sets AZURE_FEDERATED_TOKEN_FILE on the job
+  environment.
+
+  Why a composite action and not azure/login?
+  azure/login authenticates the Azure CLI: it consumes the GitHub OIDC JWT,
+  exchanges it for an Azure access token, and stashes that access token in
+  ~/.azure/. It does NOT persist the GitHub JWT to disk, and the
+  azure-identity SDK's WorkloadIdentityCredential reads the JWT from a file
+  on disk (the same contract used by AKS workload identity). Until
+  Azure/login ships an option to write the federated token file, we provision
+  it ourselves with the same one-line OIDC token request that azure/login
+  performs internally.
+
+  Requirements:
+    * The calling job (or workflow) must grant `permissions: id-token: write`
+      so that ACTIONS_ID_TOKEN_REQUEST_URL and ACTIONS_ID_TOKEN_REQUEST_TOKEN
+      are injected by the runner.
+    * The target Entra app registration must have a federated credential that
+      trusts the GitHub OIDC issuer for this repo/environment/branch and the
+      audience supplied via `audience` (default api://AzureADTokenExchange).
+
+inputs:
+  audience:
+    description: >-
+      OIDC audience that the app registration's federated credential trusts.
+      Defaults to api://AzureADTokenExchange, which matches the default used
+      by Entra ID federated credentials of type "GitHub Actions".
+    required: false
+    default: "api://AzureADTokenExchange"
+  token-file:
+    description: >-
+      Absolute path where the federated token JWT will be written. Defaults
+      to $RUNNER_TEMP/azure-federated-token. Override only if you need a
+      specific path (e.g. for a sidecar/container that mounts a fixed path).
+    required: false
+    default: ""
+
+outputs:
+  token-file:
+    description: "Absolute path to the file containing the federated token JWT."
+    value: ${{ steps.write.outputs.token-file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Write federated token file
+      id: write
+      shell: bash
+      env:
+        AZURE_AD_AUDIENCE: ${{ inputs.audience }}
+        TOKEN_FILE_OVERRIDE: ${{ inputs.token-file }}
+      run: |
+        set -euo pipefail
+
+        if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" || -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]]; then
+          echo "::error::ACTIONS_ID_TOKEN_REQUEST_URL/TOKEN are not set. Did you grant 'permissions: id-token: write' on the calling job or workflow?" >&2
+          exit 1
+        fi
+
+        TOKEN_FILE="${TOKEN_FILE_OVERRIDE:-$RUNNER_TEMP/azure-federated-token}"
+        AUDIENCE_URLENC=$(jq -nr --arg a "$AZURE_AD_AUDIENCE" '$a|@uri')
+
+        # Request the GitHub Actions OIDC JWT for the requested audience and
+        # write the raw JWT (not an Azure access token) to disk so that
+        # WorkloadIdentityCredential can read it.
+        curl -sSL --fail \
+          -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+          "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE_URLENC" \
+          | jq -r .value > "$TOKEN_FILE"
+
+        if [[ ! -s "$TOKEN_FILE" ]]; then
+          echo "::error::Federated token file is empty: $TOKEN_FILE" >&2
+          exit 1
+        fi
+        chmod 600 "$TOKEN_FILE"
+
+        echo "AZURE_FEDERATED_TOKEN_FILE=$TOKEN_FILE" >> "$GITHUB_ENV"
+        echo "token-file=$TOKEN_FILE" >> "$GITHUB_OUTPUT"
