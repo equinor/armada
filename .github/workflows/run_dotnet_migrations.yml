@@ -31,10 +31,6 @@ on:
         required: false
         type: string
         default: "10.0.*"
-      azure_client_id:
-        description: "Azure AD application (client) ID used for OIDC federated login"
-        required: true
-        type: string
       azure_subscription_id:
         description: "Azure subscription ID used for OIDC federated login"
         required: true
@@ -61,7 +57,10 @@ jobs:
       - name: Azure login (OIDC / federated credential)
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 #v2.3.0
         with:
-          client-id: ${{ inputs.azure_client_id }}
+          # vars.CLIENTID is an environment-scoped variable resolved via the
+          # job's environment: ${{ inputs.environment }} above. It must be
+          # defined on the calling repo's GitHub Environment.
+          client-id: ${{ vars.CLIENTID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ inputs.azure_subscription_id }}
 
@@ -81,6 +80,6 @@ jobs:
         env:
           # azure/login above has injected AZURE_FEDERATED_TOKEN_FILE so that
           # WorkloadIdentityCredential can acquire tokens without a client secret.
-          AZURE_CLIENT_ID: ${{ inputs.azure_client_id }}
+          AZURE_CLIENT_ID: ${{ vars.CLIENTID }}
           AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
           ASPNETCORE_ENVIRONMENT: ${{ vars.AspNetEnvironment }}
