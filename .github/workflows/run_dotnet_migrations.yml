@@ -32,9 +32,10 @@ on:
         type: string
         default: "10.0.*"
       azure_subscription_id:
-        description: "Azure subscription ID used for OIDC federated login"
-        required: true
+        description: "Azure subscription ID. Currently unused; kept for backward compatibility with existing callers."
+        required: false
         type: string
+        default: ""
 
 permissions:
   contents: read
@@ -54,15 +55,28 @@ jobs:
         with:
           ref: ${{ inputs.pr_head_sha || inputs.checkout_ref }}
 
-      - name: Azure login (OIDC / federated credential)
-        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 #v2.3.0
-        with:
-          # vars.CLIENTID is an environment-scoped variable resolved via the
-          # job's environment: ${{ inputs.environment }} above. It must be
-          # defined on the calling repo's GitHub Environment.
-          client-id: ${{ vars.CLIENTID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ inputs.azure_subscription_id }}
+      - name: Provision GitHub OIDC token for WorkloadIdentityCredential
+        # azure/login is intentionally not used here: it only authenticates the
+        # az CLI and does not write the federated token to a file, which is
+        # what the azure-identity SDK's WorkloadIdentityCredential requires.
+        # We fetch the GitHub Actions OIDC JWT for the audience that the app
+        # registration's federated credential trusts, write it to a file under
+        # RUNNER_TEMP, and export AZURE_FEDERATED_TOKEN_FILE so that the SDK
+        # picks it up. AZURE_CLIENT_ID and AZURE_TENANT_ID are set on the
+        # dotnet ef step below.
+        shell: bash
+        env:
+          AZURE_AD_AUDIENCE: api://AzureADTokenExchange
+        run: |
+          set -euo pipefail
+          TOKEN_FILE="$RUNNER_TEMP/azure-federated-token"
+          AUDIENCE_URLENC=$(jq -nr --arg a "$AZURE_AD_AUDIENCE" '$a|@uri')
+          curl -sSL \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE_URLENC" \
+            | jq -r .value > "$TOKEN_FILE"
+          test -s "$TOKEN_FILE"
+          echo "AZURE_FEDERATED_TOKEN_FILE=$TOKEN_FILE" >> "$GITHUB_ENV"
 
       - name: Set up .NET
         uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 #v5
@@ -78,8 +92,9 @@ jobs:
       - name: Update database
         run: dotnet ef database update --no-build --verbose
         env:
-          # azure/login above has injected AZURE_FEDERATED_TOKEN_FILE so that
-          # WorkloadIdentityCredential can acquire tokens without a client secret.
+          # AZURE_FEDERATED_TOKEN_FILE is exported above. Together with these
+          # two values, azure-identity's WorkloadIdentityCredential can acquire
+          # tokens without a client secret.
           AZURE_CLIENT_ID: ${{ vars.CLIENTID }}
           AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
           ASPNETCORE_ENVIRONMENT: ${{ vars.AspNetEnvironment }}
