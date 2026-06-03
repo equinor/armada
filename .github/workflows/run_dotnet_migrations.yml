@@ -78,8 +78,11 @@ jobs:
       - name: Update database
         run: dotnet ef database update --no-build --verbose
         env:
-          # azure/login above has injected AZURE_FEDERATED_TOKEN_FILE so that
-          # WorkloadIdentityCredential can acquire tokens without a client secret.
+          # azure/login above has populated ~/.azure/ on the runner. Callers
+          # must include "AzureCliBootstrap" (or another credential type that
+          # consults the Azure CLI cache) in their AzureAd:AllowedAuthMethods
+          # so that the application's credential chain can authenticate to
+          # Azure without a client secret and without a federated token file.
           AZURE_CLIENT_ID: ${{ vars.CLIENTID }}
           AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
           ASPNETCORE_ENVIRONMENT: ${{ vars.AspNetEnvironment }}
