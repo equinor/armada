@@ -43,7 +43,7 @@ jobs:
               continue
             fi
 
-            uv lock --upgrade --exclude-newer "5 days" --no-sources --project "$project"
+            uv lock --upgrade --exclude-newer "3 days" --no-sources --project "$project"
           # Feed the multi-line project list to the while loop as stdin.
           done <<< "$projects_by_line"
 
