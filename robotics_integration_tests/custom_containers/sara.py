@@ -43,6 +43,13 @@ def create_sara_container(
         .with_env("Mqtt__Password", settings.SARA_MQTT_PASSWORD)
         .with_env("Mqtt__Username", "sara")
         .with_env("ASPNETCORE_ENVIRONMENT", settings.ASPNETCORE_ENVIRONMENT)
+        # Pin the integration-test container to the ConnectionString auth path.
+        # sara's appsettings.Development.json now lists AppRegIdentity first
+        # (equinor/sara#396), which would otherwise wire EF Core against the
+        # dev Azure PostgreSQL server (unreachable from the test docker
+        # network). Mirrors the migration-workflow override in
+        # .github/workflows/run_dotnet_migrations.yml (PR #73).
+        .with_env("Database__AllowedAuthMethods__0", "ConnectionString")
         .with_env("AZURE_CLIENT_SECRET", settings.SARA_AZURE_CLIENT_SECRET)
         .with_env("AZURE_CLIENT_ID", settings.SARA_AZURE_CLIENT_ID)
         .with_env("AZURE_TENANT_ID", settings.SARA_AZURE_TENANT_ID)
