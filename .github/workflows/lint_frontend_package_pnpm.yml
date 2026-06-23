@@ -1,0 +1,154 @@
+name: Lint frontend package (pnpm)
+
+on:
+  workflow_call:
+    inputs:
+      node-versions:
+        description: "JSON list of node versions"
+        required: false
+        type: string
+        default: '["24.x"]'
+
+      pnpm-version:
+        description: "pnpm version to install"
+        required: false
+        type: string
+        default: "10.33.4"
+
+      working-directory:
+        description: "Path to the frontend project directory"
+        required: false
+        type: string
+        default: "."
+
+      run-prettier:
+        description: "Run prettier format check"
+        required: false
+        type: boolean
+        default: true
+
+      run-eslint:
+        description: "Run eslint linting"
+        required: false
+        type: boolean
+        default: true
+
+      run-build:
+        description: "Run build"
+        required: false
+        type: boolean
+        default: true
+
+      run-unused-exports:
+        description: "Run ts-unused-exports check"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  check_formatting:
+    if: ${{ inputs.run-prettier }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ${{ fromJSON(inputs.node-versions) }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+      - name: Install pnpm
+        uses: pnpm/action-setup@b307475762933b98ed359c036b0e51f26b63b74b #v5
+        with:
+          version: ${{ inputs.pnpm-version }}
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e #v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "pnpm"
+          cache-dependency-path: "**/pnpm-lock.yaml"
+      - name: Install modules
+        run: pnpm install --frozen-lockfile
+      - name: Run Prettier
+        run: pnpm run prettier_check
+
+  run_eslint:
+    if: ${{ inputs.run-eslint }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ${{ fromJSON(inputs.node-versions) }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+      - name: Install pnpm
+        uses: pnpm/action-setup@b307475762933b98ed359c036b0e51f26b63b74b #v5
+        with:
+          version: ${{ inputs.pnpm-version }}
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e #v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "pnpm"
+          cache-dependency-path: "**/pnpm-lock.yaml"
+      - name: Install modules
+        run: pnpm install --frozen-lockfile
+      - name: Run ESLint
+        run: pnpm run lint
+
+  build:
+    if: ${{ inputs.run-build }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ${{ fromJSON(inputs.node-versions) }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+      - name: Install pnpm
+        uses: pnpm/action-setup@b307475762933b98ed359c036b0e51f26b63b74b #v5
+        with:
+          version: ${{ inputs.pnpm-version }}
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e #v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "pnpm"
+          cache-dependency-path: "**/pnpm-lock.yaml"
+      - name: Install modules
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+
+  check_exports:
+    if: ${{ inputs.run-unused-exports }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ${{ fromJSON(inputs.node-versions) }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+      - name: Install pnpm
+        uses: pnpm/action-setup@b307475762933b98ed359c036b0e51f26b63b74b #v5
+        with:
+          version: ${{ inputs.pnpm-version }}
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e #v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "pnpm"
+          cache-dependency-path: "**/pnpm-lock.yaml"
+      - name: Install modules
+        run: pnpm install --frozen-lockfile
+      - name: Run Unused Exports Check
+        run: pnpm exec ts-unused-exports tsconfig.json
