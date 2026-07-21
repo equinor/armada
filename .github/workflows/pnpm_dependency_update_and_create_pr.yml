@@ -53,8 +53,6 @@ jobs:
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e #v6
         with:
           node-version: ${{ inputs.node-version }}
-          cache: pnpm
-          cache-dependency-path: ${{ inputs.working-directory }}/pnpm-lock.yaml
 
       - name: Update pnpm packages
         if: ${{ inputs.operation == 'update' }}
