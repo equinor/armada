@@ -346,10 +346,18 @@ def flotilla_backend(
 
 
 @pytest.fixture
-def sara(network: Network, sara_database: SaraDatabase, test_id: str):
+def sara(
+    network: Network,
+    sara_database: SaraDatabase,
+    flotilla_storage: FlotillaStorage,
+    test_id: str,
+):
     with create_sara_container(
         network=network,
         database_connection_string=sara_database.connection_string,
+        raw_storage_connection_string=flotilla_storage.azurite_containers[
+            settings.SARA_RAW_STORAGE_CONTAINER
+        ].docker_connection_string,
         image=settings.SARA_IMAGE,
         name=settings.SARA_NAME,
         port=settings.SARA_PORT,

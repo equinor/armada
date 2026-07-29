@@ -25,6 +25,7 @@ class Sara:
 def create_sara_container(
     network: Network,
     database_connection_string: str,
+    raw_storage_connection_string: str,
     image: str = "ghcr.io/equinor/sara:latest",
     name: str = "sara",
     port: int = 8100,
@@ -59,6 +60,10 @@ def create_sara_container(
         .with_env("AzureAd__ClientId", settings.SARA_AZURE_CLIENT_ID)
         .with_env("AzureAd__TenantId", settings.SARA_AZURE_TENANT_ID)
         .with_env("Storage__RawStorageAccount", settings.AZURITE_ACCOUNT)
+        .with_env(
+            f"BlobStorage__{settings.AZURITE_ACCOUNT}__ConnectionString",
+            raw_storage_connection_string,
+        )
     )
 
     return container
