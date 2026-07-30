@@ -4,7 +4,7 @@ from robotics_integration_tests.custom_containers.sara import Sara
 from robotics_integration_tests.settings.settings import settings
 from testcontainers.core.network import Network
 from loguru import logger
-from robotics_integration_tests.custom_containers.azurite import FlotillaStorage
+from robotics_integration_tests.custom_containers.azurite import ArmadaStorage
 from robotics_integration_tests.custom_containers.flotilla_backend import (
     FlotillaBackend,
 )
@@ -28,7 +28,7 @@ class Armada:
         self.flotilla_database: FlotillaDatabase | None = None
         self.flotilla_broker: FlotillaBroker | None = None
         self.flotilla_backend: FlotillaBackend | None = None
-        self.flotilla_storage: FlotillaStorage | None = None
+        self.armada_storage: ArmadaStorage | None = None
         self.sara: Sara | None = None
         self.sara_database: SaraDatabase | None = None
         self.teams_webhook_receiver: TeamsWebhookReceiver | None = None

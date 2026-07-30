@@ -24,7 +24,7 @@ class AzuriteStorageContainer:
         self.host_connection_string = host_connection_string
 
 
-class FlotillaStorage:
+class ArmadaStorage:
     def __init__(self, azurite_containers: Dict[str, AzuriteStorageContainer]) -> None:
         self.azurite_containers: Dict[str, AzuriteStorageContainer] = azurite_containers
 
