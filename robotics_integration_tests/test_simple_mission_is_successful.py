@@ -44,7 +44,7 @@ def test_simple_mission_with_three_tags_is_successful(
 
     wait_until_all_expected_files_uploaded(
         container_name=robot.installation_code.lower(),
-        connection_string=armada.flotilla_storage.azurite_containers.get(
+        connection_string=armada.armada_storage.azurite_containers.get(
             settings.SARA_RAW_STORAGE_CONTAINER
         ).host_connection_string,
         expected_file_count=len(mission_run.get("tasks")),

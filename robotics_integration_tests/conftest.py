@@ -24,7 +24,7 @@ from robotics_integration_tests.custom_containers.azurite import (
     create_azurite_container,
     azurite_connection_string_for_containers,
     ensure_blob_containers,
-    FlotillaStorage,
+    ArmadaStorage,
     AzuriteStorageContainer,
 )
 from robotics_integration_tests.custom_containers.flotilla_backend import (
@@ -226,7 +226,7 @@ def sara_database(network: Network, keyvault: Keyvault, test_id: str):
 
 
 @pytest.fixture
-def flotilla_storage(network: Network, keyvault: Keyvault, test_id: str):
+def armada_storage(network: Network, keyvault: Keyvault, test_id: str):
     with ExitStack() as stack:
         azurite_containers: Dict[str, AzuriteStorageContainer] = {}
 
@@ -272,7 +272,7 @@ def flotilla_storage(network: Network, keyvault: Keyvault, test_id: str):
 
             ensure_blob_containers(host_connection_string, "hua", "kaa", "nls", "test")
 
-        yield FlotillaStorage(azurite_containers=azurite_containers)
+        yield ArmadaStorage(azurite_containers=azurite_containers)
 
 
 @pytest.fixture
@@ -349,13 +349,13 @@ def flotilla_backend(
 def sara(
     network: Network,
     sara_database: SaraDatabase,
-    flotilla_storage: FlotillaStorage,
+    armada_storage: ArmadaStorage,
     test_id: str,
 ):
     with create_sara_container(
         network=network,
         database_connection_string=sara_database.connection_string,
-        raw_storage_connection_string=flotilla_storage.azurite_containers[
+        raw_storage_connection_string=armada_storage.azurite_containers[
             settings.SARA_RAW_STORAGE_CONTAINER
         ].docker_connection_string,
         image=settings.SARA_IMAGE,
@@ -390,7 +390,7 @@ def armada_without_robots(
     flotilla_backend: FlotillaBackend,
     sara_database: SaraDatabase,
     sara: Sara,
-    flotilla_storage: FlotillaStorage,
+    armada_storage: ArmadaStorage,
     teams_webhook_receiver: TeamsWebhookReceiver,
 ):
     armada: Armada = Armada()
@@ -401,7 +401,7 @@ def armada_without_robots(
     armada.sara_database = sara_database
     armada.sara = sara
     armada.flotilla_database = flotilla_database
-    armada.flotilla_storage = flotilla_storage
+    armada.armada_storage = armada_storage
     armada.flotilla_broker = flotilla_broker
     armada.flotilla_backend = flotilla_backend
     armada.teams_webhook_receiver = teams_webhook_receiver

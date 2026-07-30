@@ -61,7 +61,7 @@ def test_multiple_robots_with_different_outcomes(
         },
     }
 
-    raw_storage_conn: str = armada.flotilla_storage.azurite_containers.get(
+    raw_storage_conn: str = armada.armada_storage.azurite_containers.get(
         settings.SARA_RAW_STORAGE_CONTAINER
     ).host_connection_string
 
