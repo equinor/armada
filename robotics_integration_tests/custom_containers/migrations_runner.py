@@ -54,7 +54,10 @@ def _with_migrations_source(
 
 
 def create_migrations_runner_container(
-    network: Network, postgres_connection_string: str, name: str = "flotilla_migrations", test_id: str = ""
+    network: Network,
+    postgres_connection_string: str,
+    name: str = "flotilla_migrations",
+    test_id: str = "",
 ) -> StreamLoggingDockerContainer:
     migrations_runner_image: str = build_image_once(
         path=str(Path(settings.RELATIVE_PATH_TO_DOCKERFILE).resolve(strict=True)),
@@ -83,7 +86,10 @@ def create_migrations_runner_container(
 
 
 def create_sara_migrations_runner_container(
-    network: Network, postgres_connection_string: str, name: str = "sara_migrations", test_id: str = ""
+    network: Network,
+    postgres_connection_string: str,
+    name: str = "sara_migrations",
+    test_id: str = "",
 ) -> StreamLoggingDockerContainer:
     sara_migrations_runner_image: str = build_image_once(
         path=str(Path(settings.RELATIVE_PATH_TO_DOCKERFILE).resolve(strict=True)),
