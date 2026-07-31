@@ -4,8 +4,7 @@ from typing import List
 import requests
 from docker.models.networks import Network
 from loguru import logger
-from testcontainers.core.image import DockerImage
-
+from robotics_integration_tests.custom_containers.image_builder import build_image_once
 from robotics_integration_tests.custom_containers.stream_logging_docker_container import (
     StreamLoggingDockerContainer,
 )
@@ -70,13 +69,10 @@ def create_teams_webhook_receiver_container(
     test_id: str = "",
 ) -> tuple[StreamLoggingDockerContainer, TeamsWebhookReceiver]:
     """Build the image and return both the raw container and a typed wrapper."""
-    image: DockerImage = DockerImage(
-        path=str(_IMAGE_DIR),
-        tag="teams-webhook-receiver",
-    ).build()
+    image: str = build_image_once(path=str(_IMAGE_DIR), tag="teams-webhook-receiver")
 
     container: StreamLoggingDockerContainer = (
-        StreamLoggingDockerContainer(image=str(image))
+        StreamLoggingDockerContainer(image=image)
         .with_name(f"{name}-{test_id}")
         .with_exposed_ports(port)
         .with_network(network)
