@@ -69,6 +69,10 @@ from robotics_integration_tests.utilities.authentication import (
     configure_mock_issuer,
     reset_mock_issuer,
 )
+from robotics_integration_tests.utilities.authentication_assertions import (
+    assert_authentication_is_enforced,
+    isar_url,
+)
 from robotics_integration_tests.utilities.flotilla_backend_api import (
     setup_robot_in_flotilla,
     wait_for_backend_to_be_responsive,
@@ -331,6 +335,12 @@ def flotilla_backend(
 
         backend_url: str = f"http://localhost:{flotilla_backend.get_exposed_port(8000)}"
         wait_for_backend_to_be_responsive(backend_url=backend_url)
+        # Before anything is seeded, confirm the backend actually rejects
+        # unauthenticated callers. Every other assertion in the suite is about
+        # mission behaviour and would pass just as happily against an unsecured
+        # stack, so this is the only thing standing between us and silently
+        # testing a backend with authentication switched off.
+        assert_authentication_is_enforced(f"{backend_url}/robots")
         populate_database_with_minimum_models(backend_url=backend_url)
         wait_for_database_to_be_populated(backend_url=backend_url)
 
@@ -369,6 +379,7 @@ def sara(
 
         sara_url: str = f"http://localhost:{sara_container.get_exposed_port(8100)}"
         wait_for_sara_to_be_responsive(sara_url=sara_url)
+        assert_authentication_is_enforced(f"{sara_url}/api/analysis")
 
         yield Sara(
             sara=sara_container,
@@ -421,6 +432,19 @@ def _blob_connection_strings(armada: Armada) -> tuple[str, str]:
     )
 
 
+def _assert_robots_require_authentication(armada: Armada) -> None:
+    """Confirm every ISAR robot rejects unauthenticated callers.
+
+    Mirrors the check applied to flotilla and sara when their containers start.
+    An unauthenticated POST is refused before the handler runs, so this cannot
+    disturb the robot's state machine.
+    """
+    for robot in armada.robots.values():
+        assert_authentication_is_enforced(
+            isar_url(robot, "/schedule/stop-mission"), method="POST"
+        )
+
+
 @pytest.fixture
 def armada_with_single_successful_robot(armada_without_robots: Armada):
     armada: Armada = armada_without_robots
@@ -450,6 +474,7 @@ def armada_with_single_successful_robot(armada_without_robots: Armada):
             alias=settings.ISAR_ROBOT_ALIAS,
             installation_code=installation_code_for_robot,
         )
+        _assert_robots_require_authentication(armada)
         armada.log_startup_info()
         yield armada
 
@@ -485,6 +510,7 @@ def armada_with_single_failing_robot(armada_without_robots: Armada):
             alias=settings.ISAR_ROBOT_ALIAS,
             installation_code=installation_code_for_robot,
         )
+        _assert_robots_require_authentication(armada)
         armada.log_startup_info()
         yield armada
 
@@ -579,6 +605,7 @@ def armada_with_multiple_robots(armada_without_robots: Armada):
                 installation_code=installation_code,
             )
 
+        _assert_robots_require_authentication(armada)
         armada.log_startup_info()
         yield armada
 
