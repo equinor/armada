@@ -83,3 +83,39 @@ You may now run the tests with
 ```bash
 uv run pytest -s .
 ```
+
+### Running against locally built images
+
+By default the tests pull `ghcr.io/equinor/{flotilla-backend,sara,isar-robot}`. A change that
+spans armada *and* one of those services therefore cannot be verified until the service change
+is merged and an image published — even though the armada side is what proves the service side
+works.
+
+To close that gap, build the images from your local working copies:
+
+```bash
+scripts/build_local_images.sh           # build and verify
+scripts/build_local_images.sh --run     # ... and run the full suite against them
+```
+
+The script expects the sibling checkouts of the superrepo (`../isar`, `../isar-robot`,
+`../flotilla`, `../sara`); override with `ISAR_DIR`, `ISAR_ROBOT_DIR`, `FLOTILLA_DIR`,
+`SARA_DIR`. It verifies each image before handing back, because a subtly broken build otherwise
+shows up only as an unexplained timeout several minutes into the suite.
+
+The database schema is taken from the same local checkouts, via `FLOTILLA_MIGRATIONS_SOURCE_DIR`
+and `SARA_MIGRATIONS_SOURCE_DIR`, so application code and schema always agree. The directory is
+mounted read-only and copied into the migrations container, which means **uncommitted and
+untracked migrations are picked up**. Set either variable on its own if you want to mix a local
+schema with published images.
+
+Two things worth knowing:
+
+- **`flotilla`, `sara` and `isar` are built from the working tree**, so uncommitted changes are
+  included. **`isar-robot` is cloned**, so only committed changes are — the script warns if that
+  checkout is dirty. It has to be cloned because its Dockerfile bind-mounts `.git`, and in the
+  superrepo that is a submodule *file* rather than a directory.
+- `isar-robot`'s `uv.lock` pins `isar` from PyPI, so the locally built `isar` wheel is installed
+  over the released one.
+
+The mosquitto broker is always the published image.
