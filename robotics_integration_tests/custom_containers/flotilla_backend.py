@@ -42,13 +42,10 @@ def create_flotilla_backend_container(
         .with_env("Mqtt__Host", settings.FLOTILLA_BROKER_ALIAS)
         .with_env("Mqtt__Port", settings.FLOTILLA_BROKER_PORT)
         .with_env("Mqtt__Password", settings.FLOTILLA_MQTT_PASSWORD)
+        # Selects appsettings.IntegrationTest.json, which points token validation
+        # at the mock issuer and turns off Key Vault and Redis.
         .with_env("ASPNETCORE_ENVIRONMENT", settings.ASPNETCORE_ENVIRONMENT)
-        .with_env("AZURE_CLIENT_SECRET", settings.FLOTILLA_AZURE_CLIENT_SECRET)
-        .with_env("AZURE_CLIENT_ID", settings.FLOTILLA_AZURE_CLIENT_ID)
-        .with_env("AZURE_TENANT_ID", settings.AZURE_TENANT_ID)
-        .with_env("KeyVault__VaultUri", settings.KEYVAULT_URI)
         .with_env("Database__PostgreSqlConnectionString", database_connection_string)
-        .with_env("AzureAd__ClientSecret", settings.FLOTILLA_AZURE_CLIENT_SECRET)
         .with_env("TeamsNotification__WebhookUrl", teams_notification_webhook_url)
     )
     return container

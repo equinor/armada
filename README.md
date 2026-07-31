@@ -11,6 +11,29 @@ The following components are currently included in the integration tests:
 - PostgreSQL database
 - Azure Blob Storage (emulated with Azurite)
 - [ISAR Robot](https://github.com/equinor/isar-robot) (your friendly neighbourhood mocked robot which provides the answers you need)
+- [SARA](https://github.com/equinor/sara) (storage and analysis of robot acquired data)
+- A local OAuth2 mock issuer (see [Authentication](#authentication))
+
+## Authentication
+The tests run with authentication **enabled and genuinely exercised**, but without Microsoft
+Entra ID. A local [oauth2-mock-server](https://github.com/axa-group/oauth2-mock-server)
+container acts as the OpenID Connect issuer for the whole stack:
+
+- Flotilla and SARA run with `ASPNETCORE_ENVIRONMENT=IntegrationTest`, which selects their
+  `appsettings.IntegrationTest.json` and points token validation at the mock.
+- ISAR is pointed at the mock with `ISAR_OPENID_CONFIG_URL`.
+- Flotilla acquires its downstream ISAR/SARA tokens from the mock too, via a
+  `GenericOidcAuthorizationHeaderProvider` registered only in that environment.
+- The test process mints its own tokens from the same issuer.
+
+This means **no app registrations, no tenant and no client secrets** are needed, and there is
+nothing to rotate. The container fixtures assert that each service rejects unauthenticated
+callers before any test runs, and the mission tests attempt unauthorised interference mid-flight
+(wrong audience, missing role) and then assert the mission completed unaffected — so a
+misconfiguration cannot silently disable authentication.
+
+MQTT is the one exception: it uses username/password validated by the broker against the
+hashed `passwd_file` committed in `equinor/flotilla`, so those credentials remain real secrets.
 
 ## Run the integration tests through remote workflow call
 To run the integration tests in a remote repository, this [workflow](./.github/workflows/run_integration_tests.yml) has been set up. 
@@ -55,6 +78,10 @@ This snippet will enable you to run the integration tests manually and automatic
 INTEGRATION_TEST_AZURE_CLIENT_SECRET
 ```
 
+This secret now only grants read access to the MQTT credentials in the key vault; it is no
+longer used for authentication between the services. It is still declared by every consuming
+repository, so it is kept for compatibility rather than removed.
+
 The input `lane` determines which image tag should be applied to the internally developed packages like Flotilla and ISAR. If input is set as `lane=dev` the newest development images (corresponding to newest push to main branch) will be used while `lane=latest` will use the newest release. 
 
 ## Local development
@@ -63,20 +90,17 @@ Clone the repository and install dependencies with [uv](https://docs.astral.sh/u
 uv sync
 ```
 
-Ensure the following secrets are populated in your local environment, either as environment variables or in a `.env` file in the repository root directory.
+Ensure the following secrets are populated in your local environment, either as environment variables or in a `.env` file in the repository root directory. These are the MQTT credentials; no
+Azure app registration secrets are needed, and you do **not** need to be logged in with `az`.
 
 ```
-INTEGRATION_TESTS_CLIENT_SECRET
-FLOTILLA_AZURE_CLIENT_SECRET
 FLOTILLA_BROKER_SERVER_KEY
 FLOTILLA_MQTT_PASSWORD
-ISAR_AZURE_CLIENT_SECRET
 ISAR_MQTT_PASSWORD
-SARA_AZURE_CLIENT_SECRET
 SARA_MQTT_PASSWORD
 ```
 
-They may all be found in the integration test [keyvault](https://portal.azure.com/#@StatoilSRM.onmicrosoft.com/resource/subscriptions/c389567b-2dd0-41fa-a5da-d86b81f80bda/resourceGroups/FlotillaIntegrationTests/providers/Microsoft.KeyVault/vaults/FlotillaTestsKv/overview).
+They may be found in the integration test [keyvault](https://portal.azure.com/#@StatoilSRM.onmicrosoft.com/resource/subscriptions/c389567b-2dd0-41fa-a5da-d86b81f80bda/resourceGroups/FlotillaIntegrationTests/providers/Microsoft.KeyVault/vaults/FlotillaTestsKv/overview).
 
 You may now run the tests with
 
@@ -118,4 +142,5 @@ Two things worth knowing:
 - `isar-robot`'s `uv.lock` pins `isar` from PyPI, so the locally built `isar` wheel is installed
   over the released one.
 
-The mosquitto broker is always the published image.
+The mosquitto broker is always the published image, and the OAuth2 mock is built automatically
+by the test fixtures.

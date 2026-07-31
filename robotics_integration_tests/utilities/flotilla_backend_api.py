@@ -14,7 +14,7 @@ from robotics_integration_tests.utilities.authentication import (
 
 def _add_headers() -> Dict[str, str]:
     access_token: str = retrieve_access_token_for_integration_tests_app(
-        settings.FLOTILLA_AZURE_CLIENT_ID
+        settings.FLOTILLA_AUDIENCE
     )
     headers = {"Authorization": f"Bearer {access_token}"}
     return headers
