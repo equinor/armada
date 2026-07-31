@@ -1,8 +1,8 @@
 from pathlib import Path
 
 from docker.models.networks import Network
-from testcontainers.core.image import DockerImage
 
+from robotics_integration_tests.custom_containers.image_builder import build_image_once
 from robotics_integration_tests.custom_containers.stream_logging_docker_container import (
     StreamLoggingDockerContainer,
 )
@@ -12,13 +12,13 @@ from robotics_integration_tests.settings.settings import settings
 def create_migrations_runner_container(
     network: Network, postgres_connection_string: str, name: str = "flotilla_migrations", test_id: str = ""
 ) -> StreamLoggingDockerContainer:
-    migrations_runner_image: DockerImage = DockerImage(
+    migrations_runner_image: str = build_image_once(
         path=str(Path(settings.RELATIVE_PATH_TO_DOCKERFILE).resolve(strict=True)),
         tag="flotilla-migrations-runner",
-    ).build()
+    )
 
     container = (
-        StreamLoggingDockerContainer(image=str(migrations_runner_image))
+        StreamLoggingDockerContainer(image=migrations_runner_image)
         .with_name(f"{name}-{test_id}")
         .with_network(network)
         .with_env("DATABASE_URL", postgres_connection_string)
@@ -36,13 +36,13 @@ def create_migrations_runner_container(
 def create_sara_migrations_runner_container(
     network: Network, postgres_connection_string: str, name: str = "sara_migrations", test_id: str = ""
 ) -> StreamLoggingDockerContainer:
-    sara_migrations_runner_image: DockerImage = DockerImage(
+    sara_migrations_runner_image: str = build_image_once(
         path=str(Path(settings.RELATIVE_PATH_TO_DOCKERFILE).resolve(strict=True)),
         tag="sara-migrations-runner",
-    ).build()
+    )
 
     container = (
-        StreamLoggingDockerContainer(image=str(sara_migrations_runner_image))
+        StreamLoggingDockerContainer(image=sara_migrations_runner_image)
         .with_name(f"{name}-{test_id}")
         .with_network(network)
         .with_env("DATABASE_URL", postgres_connection_string)
