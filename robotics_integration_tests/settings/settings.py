@@ -58,6 +58,14 @@ class Settings(BaseSettings):
     GIT_REPOSITORY_FOR_MIGRATIONS_REF: str = Field(default="latest")
     BACKEND_PROJECT_FILE_FOLDER: str = Field(default="backend/api")
 
+    # Path to a local flotilla checkout to take migrations from. When set, it
+    # takes precedence over cloning GIT_REPOSITORY_FOR_MIGRATIONS from GitHub, and
+    # GIT_REPOSITORY_FOR_MIGRATIONS_REF is ignored. Use this together with locally
+    # built images (see scripts/build_local_images.sh) so that the schema and the
+    # application code come from the same source. Uncommitted and untracked
+    # migrations are included, since the directory is copied rather than cloned.
+    FLOTILLA_MIGRATIONS_SOURCE_DIR: str = Field(default="")
+
     # PostgreSQL Sara Database environment
     POSTGRESQL_IMAGE: str = Field(default="postgres:16")
     SARA_DB_USER: str = Field(default="sara")
@@ -68,6 +76,9 @@ class Settings(BaseSettings):
     SARA_GIT_REPOSITORY_FOR_MIGRATIONS_REF: str = Field(default="latest")
 
     SARA_BACKEND_PROJECT_FILE_FOLDER: str = Field(default="api")
+
+    # See FLOTILLA_MIGRATIONS_SOURCE_DIR.
+    SARA_MIGRATIONS_SOURCE_DIR: str = Field(default="")
 
     # Migrations runner environment
     RELATIVE_PATH_TO_DOCKERFILE: str = Field(
