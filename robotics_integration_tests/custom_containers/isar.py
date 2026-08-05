@@ -28,6 +28,7 @@ class IsarRobot:
 
 def create_isar_robot_container(
     network: Network,
+    openid_config_url: str,
     image: str = "ghcr.io/equinor/isar-robot:latest",
     name: str = "isar_robot",
     port: int = 3000,
@@ -58,9 +59,10 @@ def create_isar_robot_container(
         .with_kwargs(platform="linux/amd64")
         .with_env("ISAR_MQTT_HOST", settings.FLOTILLA_BROKER_ALIAS)
         .with_env("ISAR_MQTT_PASSWORD", settings.ISAR_MQTT_PASSWORD)
-        .with_env("AZURE_CLIENT_SECRET", settings.ISAR_AZURE_CLIENT_SECRET)
-        .with_env("ISAR_AZURE_CLIENT_ID", settings.ISAR_AZURE_CLIENT_ID)
-        .with_env("ISAR_AZURE_TENANT_ID", settings.ISAR_AZURE_TENANT_ID)
+        # ISAR_AZURE_CLIENT_ID is the expected `aud`. settings.py lets a bare
+        # AZURE_CLIENT_ID override it, so that variable must not be set here.
+        .with_env("ISAR_OPENID_CONFIG_URL", openid_config_url)
+        .with_env("ISAR_AZURE_CLIENT_ID", settings.ISAR_AUDIENCE)
         .with_env("ISAR_STORAGE_BLOB_ENABLED", "true")
         .with_env("ISAR_BLOB_STORAGE_ACCOUNT_DATA", settings.AZURITE_ACCOUNT)
         .with_env(

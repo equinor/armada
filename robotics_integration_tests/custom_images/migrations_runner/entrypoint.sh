@@ -12,11 +12,6 @@ EF_STARTUP_PATH="${EF_STARTUP_PATH:-$EF_PROJECT_PATH}"
 EF_CONTEXT="${EF_CONTEXT:-}"
 WAIT_FOR_DB_TIMEOUT="${WAIT_FOR_DB_TIMEOUT:-60}"
 
-# ---------- Secrets required by EF migrations to build ----------
-: "${AZURE_CLIENT_SECRET:?AZURE_CLIENT_SECRET must be set at runtime}"
-: "${AZURE_CLIENT_ID:?AZURE_CLIENT_ID must be set at runtime}"
-: "${AZURE_TENANT_ID:?AZURE_TENANT_ID must be set at runtime}"
-
 rm -rf /work/repo
 mkdir -p /work/repo
 
