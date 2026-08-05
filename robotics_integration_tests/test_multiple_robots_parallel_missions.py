@@ -4,6 +4,9 @@ from loguru import logger
 
 from robotics_integration_tests.armada import Armada
 from robotics_integration_tests.custom_containers.isar import IsarRobot
+from robotics_integration_tests.utilities.authentication_assertions import (
+    assert_cannot_interfere_with_running_mission,
+)
 from robotics_integration_tests.utilities.teams_notifications import (
     wait_for_all_teams_notifications,
 )
@@ -81,6 +84,12 @@ def test_multiple_robots_with_different_outcomes(
             f"Scheduled mission {mission['id']} with id {mission_run['id']} "
             f"on robot {robot_name}"
         )
+
+    # With four missions in flight. The status assertions below prove the
+    # unauthorised calls had no effect.
+    assert_cannot_interfere_with_running_mission(
+        armada=armada, robot=armada.robots["MissionOkThenHome"]
+    )
 
     wait_for_all_mission_run_statuses(
         backend_url=backend_url,
