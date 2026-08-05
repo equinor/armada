@@ -99,7 +99,9 @@ jobs:
 
       - name: Run ruff
         if: ${{ inputs.run-ruff }}
-        run: uv run --frozen ruff check .
+        # SIM102 is ignored because it enforces compact if-statements which is less readable
+        # RUF010 is ignored because it switches str() with a less readable format
+        run: uv run --frozen ruff check --ignore SIM102 --ignore RUF010 .
         working-directory: ${{ inputs.project-path }}
 
       - name: Run isort
