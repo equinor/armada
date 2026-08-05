@@ -53,8 +53,35 @@ def _with_migrations_source(
     ).with_env("LOCAL_REPO_PATH", _LOCAL_REPO_MOUNT)
 
 
+def _with_design_time_database_config(
+    container: StreamLoggingDockerContainer, postgres_connection_string: str
+) -> StreamLoggingDockerContainer:
+    """Supply the connection string to EF's design-time context factory.
+
+    ``dotnet ef database update --connection`` overrides the connection used for
+    the migration itself, but EF still instantiates ``DesignTimeContextFactory``,
+    which reads its own configuration and falls back to **Azure Key Vault** when
+    no connection string is present. Passing it as configuration short-circuits
+    that fallback, which is what removes the Key Vault dependency here.
+
+    Flotilla and sara read different keys for this (``PostgreSqlConnectionString``
+    vs ``postgresConnectionString``), so both are set.
+    """
+    return (
+        container.with_env(
+            "Database__postgresConnectionString", postgres_connection_string
+        )
+        .with_env("Database__PostgreSqlConnectionString", postgres_connection_string)
+        .with_env("Database__ConnectionString", postgres_connection_string)
+        .with_env("Database__AllowedAuthMethods__0", "ConnectionString")
+    )
+
+
 def create_migrations_runner_container(
-    network: Network, postgres_connection_string: str, name: str = "flotilla_migrations", test_id: str = ""
+    network: Network,
+    postgres_connection_string: str,
+    name: str = "flotilla_migrations",
+    test_id: str = "",
 ) -> StreamLoggingDockerContainer:
     migrations_runner_image: str = build_image_once(
         path=str(Path(settings.RELATIVE_PATH_TO_DOCKERFILE).resolve(strict=True)),
@@ -66,24 +93,25 @@ def create_migrations_runner_container(
         .with_name(f"{name}-{test_id}")
         .with_network(network)
         .with_env("DATABASE_URL", postgres_connection_string)
-        .with_env("AZURE_CLIENT_SECRET", settings.FLOTILLA_AZURE_CLIENT_SECRET)
-        .with_env("AZURE_CLIENT_ID", settings.FLOTILLA_AZURE_CLIENT_ID)
-        .with_env("AZURE_TENANT_ID", settings.AZURE_TENANT_ID)
         .with_env("GIT_REPO", settings.GIT_REPOSITORY_FOR_MIGRATIONS)
         .with_env("GIT_REF", settings.GIT_REPOSITORY_FOR_MIGRATIONS_REF)
         .with_env("EF_PROJECT_PATH", settings.BACKEND_PROJECT_FILE_FOLDER)
         .with_env("EF_STARTUP_PATH", settings.BACKEND_PROJECT_FILE_FOLDER)
     )
-    return _with_migrations_source(
+    container = _with_migrations_source(
         container,
         source_dir=settings.FLOTILLA_MIGRATIONS_SOURCE_DIR,
         project_folder=settings.BACKEND_PROJECT_FILE_FOLDER,
         setting_name="FLOTILLA_MIGRATIONS_SOURCE_DIR",
     )
+    return _with_design_time_database_config(container, postgres_connection_string)
 
 
 def create_sara_migrations_runner_container(
-    network: Network, postgres_connection_string: str, name: str = "sara_migrations", test_id: str = ""
+    network: Network,
+    postgres_connection_string: str,
+    name: str = "sara_migrations",
+    test_id: str = "",
 ) -> StreamLoggingDockerContainer:
     sara_migrations_runner_image: str = build_image_once(
         path=str(Path(settings.RELATIVE_PATH_TO_DOCKERFILE).resolve(strict=True)),
@@ -95,17 +123,15 @@ def create_sara_migrations_runner_container(
         .with_name(f"{name}-{test_id}")
         .with_network(network)
         .with_env("DATABASE_URL", postgres_connection_string)
-        .with_env("AZURE_CLIENT_SECRET", settings.SARA_AZURE_CLIENT_SECRET)
-        .with_env("AZURE_CLIENT_ID", settings.SARA_AZURE_CLIENT_ID)
-        .with_env("AZURE_TENANT_ID", settings.SARA_AZURE_TENANT_ID)
         .with_env("GIT_REPO", settings.SARA_GIT_REPOSITORY_FOR_MIGRATIONS)
         .with_env("GIT_REF", settings.SARA_GIT_REPOSITORY_FOR_MIGRATIONS_REF)
         .with_env("EF_PROJECT_PATH", settings.SARA_BACKEND_PROJECT_FILE_FOLDER)
         .with_env("EF_STARTUP_PATH", settings.SARA_BACKEND_PROJECT_FILE_FOLDER)
     )
-    return _with_migrations_source(
+    container = _with_migrations_source(
         container,
         source_dir=settings.SARA_MIGRATIONS_SOURCE_DIR,
         project_folder=settings.SARA_BACKEND_PROJECT_FILE_FOLDER,
         setting_name="SARA_MIGRATIONS_SOURCE_DIR",
     )
+    return _with_design_time_database_config(container, postgres_connection_string)

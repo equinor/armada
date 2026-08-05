@@ -1,5 +1,6 @@
 from docker.models.networks import Network
 
+from robotics_integration_tests.custom_containers.keycloak import Keycloak
 from robotics_integration_tests.custom_containers.stream_logging_docker_container import (
     StreamLoggingDockerContainer,
 )
@@ -24,6 +25,7 @@ class Sara:
 
 def create_sara_container(
     network: Network,
+    keycloak: Keycloak,
     database_connection_string: str,
     raw_storage_connection_string: str,
     image: str = "ghcr.io/equinor/sara:latest",
@@ -44,21 +46,11 @@ def create_sara_container(
         .with_env("Mqtt__Password", settings.SARA_MQTT_PASSWORD)
         .with_env("Mqtt__Username", "sara")
         .with_env("ASPNETCORE_ENVIRONMENT", settings.ASPNETCORE_ENVIRONMENT)
-        # Pin the integration-test container to the ConnectionString auth path.
-        # sara's appsettings.Development.json now lists AppRegIdentity first
-        # (equinor/sara#396), which would otherwise wire EF Core against the
-        # dev Azure PostgreSQL server (unreachable from the test docker
-        # network). Mirrors the migration-workflow override in
-        # .github/workflows/run_dotnet_migrations.yml (PR #73).
-        .with_env("Database__AllowedAuthMethods__0", "ConnectionString")
-        .with_env("AZURE_CLIENT_SECRET", settings.SARA_AZURE_CLIENT_SECRET)
-        .with_env("AZURE_CLIENT_ID", settings.SARA_AZURE_CLIENT_ID)
-        .with_env("AZURE_TENANT_ID", settings.SARA_AZURE_TENANT_ID)
-        .with_env("KeyVault__VaultUri", settings.KEYVAULT_URI)
+        .with_env("Authentication__Provider", "Oidc")
+        .with_env("AzureAd__Authority", keycloak.internal_url)
+        .with_env("AzureAd__ClientId", settings.SARA_AUDIENCE)
+        .with_env("KeyVault__UseKeyVault", "false")
         .with_env("Database__postgresConnectionString", database_connection_string)
-        .with_env("AzureAd__ClientSecret", settings.SARA_AZURE_CLIENT_SECRET)
-        .with_env("AzureAd__ClientId", settings.SARA_AZURE_CLIENT_ID)
-        .with_env("AzureAd__TenantId", settings.SARA_AZURE_TENANT_ID)
         .with_env("Storage__RawStorageAccount", settings.AZURITE_ACCOUNT)
         .with_env(
             f"BlobStorage__{settings.AZURITE_ACCOUNT}__ConnectionString",

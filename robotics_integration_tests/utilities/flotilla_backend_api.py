@@ -14,7 +14,7 @@ from robotics_integration_tests.utilities.authentication import (
 
 def _add_headers() -> Dict[str, str]:
     access_token: str = retrieve_access_token_for_integration_tests_app(
-        settings.FLOTILLA_AZURE_CLIENT_ID
+        settings.FLOTILLA_SCOPE
     )
     headers = {"Authorization": f"Bearer {access_token}"}
     return headers
@@ -48,91 +48,52 @@ def set_current_inspection_area_for_robot(
         headers=_add_headers(),
     )
 
+
 def get_dummy_mission_payload_with_installation(
     installation_code: str,
 ) -> Dict:
     return {
-  "tasks": [
-    {
-      "tagId": "57-2030DC",
-      "description": "Center of valve",
-      "robotPose": {
-        "position": {
-          "x": 82.03125,
-          "y": 289.04297,
-          "z": 29.402
-        },
-        "orientation": {
-          "x": 0,
-          "y": 1,
-          "z": 0,
-          "w": 1.5707964
-        }
-      },
-      "targetPosition": {
-        "x": 112.252,
-        "y": 284.027,
-        "z": 29.779
-      },
-      "analysisTypes": [],
-      "sensorType": "Image",
-    },
-    {
-      "tagId": "13-2036PT",
-      "description": "STID Tag Position",
-      "robotPose": {
-        "position": {
-          "x": 94.74,
-          "y": 296.157,
-          "z": 29.401
-        },
-        "orientation": {
-          "x": 0,
-          "y": 1,
-          "z": 0,
-          "w": 3.1415927
-        }
-      },
-      "targetPosition": {
-        "x": 295.62,
-        "y": 95.589,
-        "z": 29.767
-      },
-      "analysisTypes": [],
-      "sensorType": "Image",
-    },
-    {
-      "tagId": "65-2015OH",
-      "description": "STID Tag Position",
-      "robotPose": {
-        "position": {
-          "x": 103.048,
-          "y": 298.45,
-          "z": 29.401
-        },
-        "orientation": {
-          "x": 0,
-          "y": 1,
-          "z": 0,
-          "w": 1.5707964
-        }
-      },
-      "targetPosition": {
-        "x": 299.888,
-        "y": 103.245,
-        "z": 29.7
-      },
-      "analysisTypes": [],
-      "sensorType": "Image",
+        "tasks": [
+            {
+                "tagId": "57-2030DC",
+                "description": "Center of valve",
+                "robotPose": {
+                    "position": {"x": 82.03125, "y": 289.04297, "z": 29.402},
+                    "orientation": {"x": 0, "y": 1, "z": 0, "w": 1.5707964},
+                },
+                "targetPosition": {"x": 112.252, "y": 284.027, "z": 29.779},
+                "analysisTypes": [],
+                "sensorType": "Image",
+            },
+            {
+                "tagId": "13-2036PT",
+                "description": "STID Tag Position",
+                "robotPose": {
+                    "position": {"x": 94.74, "y": 296.157, "z": 29.401},
+                    "orientation": {"x": 0, "y": 1, "z": 0, "w": 3.1415927},
+                },
+                "targetPosition": {"x": 295.62, "y": 95.589, "z": 29.767},
+                "analysisTypes": [],
+                "sensorType": "Image",
+            },
+            {
+                "tagId": "65-2015OH",
+                "description": "STID Tag Position",
+                "robotPose": {
+                    "position": {"x": 103.048, "y": 298.45, "z": 29.401},
+                    "orientation": {"x": 0, "y": 1, "z": 0, "w": 1.5707964},
+                },
+                "targetPosition": {"x": 299.888, "y": 103.245, "z": 29.7},
+                "analysisTypes": [],
+                "sensorType": "Image",
+            },
+        ],
+        "name": "Three valves on Mezzanine Deck",
+        "installationCode": installation_code,
     }
-  ],
-  "name": "Three valves on Mezzanine Deck",
-  "installationCode": installation_code,
-}
 
-def create_mission(
-    backend_url: str, payload: Dict
-) -> Dict:
+
+def create_mission(backend_url: str, payload: Dict) -> Dict:
     try:
         response: Dict = call_create_mission(
             backend_url=backend_url,
@@ -143,9 +104,8 @@ def create_mission(
         logger.exception(f"Failed to create mission")
         raise e
 
-def call_create_mission(
-    backend_url: str, payload: Dict
-) -> Dict:
+
+def call_create_mission(backend_url: str, payload: Dict) -> Dict:
     url: str = f"{backend_url}/missions/definitions"
     response: Response = requests.post(
         url,
@@ -168,9 +128,8 @@ def call_create_mission(
     response.raise_for_status()
     return response.json()
 
-def schedule_mission(
-    backend_url: str, robot_id: str, mission_id: str
-) -> Dict:
+
+def schedule_mission(backend_url: str, robot_id: str, mission_id: str) -> Dict:
     try:
         response: Dict = call_schedule_mission(
             backend_url=backend_url,
@@ -183,9 +142,7 @@ def schedule_mission(
         raise e
 
 
-def call_schedule_mission(
-    backend_url: str, robot_id: str, mission_id: str
-) -> Dict:
+def call_schedule_mission(backend_url: str, robot_id: str, mission_id: str) -> Dict:
     payload: Dict = {
         "robotId": robot_id,
     }

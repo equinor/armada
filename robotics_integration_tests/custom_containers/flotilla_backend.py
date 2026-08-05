@@ -1,5 +1,6 @@
 from docker.models.networks import Network
 
+from robotics_integration_tests.custom_containers.keycloak import Keycloak
 from robotics_integration_tests.custom_containers.stream_logging_docker_container import (
     StreamLoggingDockerContainer,
 )
@@ -24,6 +25,7 @@ class FlotillaBackend:
 
 def create_flotilla_backend_container(
     network: Network,
+    keycloak: Keycloak,
     database_connection_string: str,
     teams_notification_webhook_url: str,
     image: str = "ghcr.io/equinor/flotilla-backend:latest",
@@ -43,11 +45,20 @@ def create_flotilla_backend_container(
         .with_env("Mqtt__Port", settings.FLOTILLA_BROKER_PORT)
         .with_env("Mqtt__Password", settings.FLOTILLA_MQTT_PASSWORD)
         .with_env("ASPNETCORE_ENVIRONMENT", settings.ASPNETCORE_ENVIRONMENT)
-        .with_env("AZURE_CLIENT_SECRET", settings.FLOTILLA_AZURE_CLIENT_SECRET)
-        .with_env("AZURE_CLIENT_ID", settings.FLOTILLA_AZURE_CLIENT_ID)
-        .with_env("AZURE_TENANT_ID", settings.AZURE_TENANT_ID)
-        .with_env("KeyVault__VaultUri", settings.KEYVAULT_URI)
+        .with_env("Authentication__Provider", "Oidc")
+        .with_env("AzureAd__Authority", keycloak.internal_url)
+        .with_env("AzureAd__ClientId", settings.FLOTILLA_AUDIENCE)
+        .with_env("AzureAd__ClientSecret", settings.FLOTILLA_CLIENT_SECRET)
+        # One scope per downstream API: two audience mappers make Keycloak emit
+        # `aud` as an array, which ISAR rejects.
+        .with_env("Isar__Scopes__0", settings.ISAR_SCOPE)
+        .with_env("SARA__BaseUrl", f"http://{settings.SARA_ALIAS}:{settings.SARA_PORT}/")
+        .with_env("SARA__Scopes__0", settings.SARA_SCOPE)
+        # Both are on in flotilla's base appsettings.json.
+        .with_env("KeyVault__UseKeyVault", "false")
+        .with_env("Redis__UseRedis", "false")
         .with_env("Database__PostgreSqlConnectionString", database_connection_string)
-        .with_env("AzureAd__ClientSecret", settings.FLOTILLA_AZURE_CLIENT_SECRET)
-        .with_env("TeamsNotification__WebhookUrl", teams_notification_webhook_url))
+        .with_env("TeamsNotification__WebhookUrl", teams_notification_webhook_url)
+    )
+
     return container
