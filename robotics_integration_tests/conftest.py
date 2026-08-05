@@ -43,6 +43,10 @@ from robotics_integration_tests.custom_containers.mosquitto import (
     create_flotilla_broker_container,
     FlotillaBroker,
 )
+from robotics_integration_tests.custom_containers.oauth2_mock import (
+    OAuth2Mock,
+    create_oauth2_mock_container,
+)
 from robotics_integration_tests.custom_containers.postgres import (
     SaraDatabase,
     create_postgres_container,
@@ -61,13 +65,20 @@ from robotics_integration_tests.custom_containers.stream_logging_docker_containe
     StreamLoggingDockerContainer,
 )
 from robotics_integration_tests.settings.settings import settings
+from robotics_integration_tests.utilities.authentication import (
+    configure_mock_issuer,
+    reset_mock_issuer,
+)
+from robotics_integration_tests.utilities.authentication_assertions import (
+    assert_authentication_is_enforced,
+    isar_url,
+)
 from robotics_integration_tests.utilities.flotilla_backend_api import (
     setup_robot_in_flotilla,
     wait_for_backend_to_be_responsive,
     populate_database_with_minimum_models,
     wait_for_database_to_be_populated,
 )
-from robotics_integration_tests.utilities.keyvault import Keyvault, ScopedKeyvault
 from robotics_integration_tests.utilities.sara_backend_api import (
     wait_for_sara_to_be_responsive,
 )
@@ -127,28 +138,40 @@ def test_id():
 
 
 @pytest.fixture
-def keyvault(test_id: str):
-    scoped_keyvault: ScopedKeyvault = ScopedKeyvault(
-        prefix=test_id,
-        keyvault_name=settings.KEYVAULT_NAME,
-        client_secret=settings.FLOTILLA_AZURE_CLIENT_SECRET,
-        client_id=settings.FLOTILLA_AZURE_CLIENT_ID,
-        tenant_id=settings.AZURE_TENANT_ID,
-    )
-
-    yield scoped_keyvault
-
-    scoped_keyvault.cleanup()
-
-
-@pytest.fixture
 def network():
     with Network() as network:
         yield network
 
 
 @pytest.fixture
-def flotilla_database(network: Network, keyvault: Keyvault, test_id: str):
+def oauth_mock(network: Network, test_id: str):
+    """Local OpenID Connect issuer standing in for Azure Entra ID.
+
+    Every service in the stack validates its access tokens against this
+    container, and the test process mints its own tokens from it, so the suite
+    needs no app registrations, no tenant and no client secrets.
+    """
+    container, mock = create_oauth2_mock_container(
+        network=network,
+        alias=settings.OAUTH_MOCK_ALIAS,
+        port=settings.OAUTH_MOCK_PORT,
+        test_id=test_id,
+    )
+    with container:
+        wait_for_port_mapping_to_be_available(container=container, port=mock.port)
+        mock.wait_until_ready()
+
+        # The API helpers build auth headers from module functions with no access
+        # to fixtures, so the host URL is handed over globally.
+        configure_mock_issuer(mock.host_url)
+        try:
+            yield mock
+        finally:
+            reset_mock_issuer()
+
+
+@pytest.fixture
+def flotilla_database(network: Network, test_id: str):
     with create_postgres_container(network, test_id=test_id) as database:
         wait_for_port_mapping_to_be_available(container=database, port=5432)
         logger.info(
@@ -174,11 +197,6 @@ def flotilla_database(network: Network, keyvault: Keyvault, test_id: str):
 
         logger.info("Migrations completed successfully (container exited cleanly)")
 
-        keyvault.set_secret(
-            secret_name="flotilla-database-connection-string",
-            secret_value=connection_string,
-        )
-
         yield FlotillaDatabase(
             database=database,
             connection_string=connection_string,
@@ -187,7 +205,7 @@ def flotilla_database(network: Network, keyvault: Keyvault, test_id: str):
 
 
 @pytest.fixture
-def sara_database(network: Network, keyvault: Keyvault, test_id: str):
+def sara_database(network: Network, test_id: str):
     with create_sara_postgres_container(network, test_id=test_id) as database:
         wait_for_port_mapping_to_be_available(container=database, port=5432)
         logger.info(
@@ -213,11 +231,6 @@ def sara_database(network: Network, keyvault: Keyvault, test_id: str):
 
         logger.info("Sara migrations completed successfully (container exited cleanly)")
 
-        keyvault.set_secret(
-            secret_name="sara-database-connection-string",
-            secret_value=connection_string,
-        )
-
         yield SaraDatabase(
             database=database,
             connection_string=connection_string,
@@ -226,7 +239,7 @@ def sara_database(network: Network, keyvault: Keyvault, test_id: str):
 
 
 @pytest.fixture
-def armada_storage(network: Network, keyvault: Keyvault, test_id: str):
+def armada_storage(network: Network, test_id: str):
     with ExitStack() as stack:
         azurite_containers: Dict[str, AzuriteStorageContainer] = {}
 
@@ -259,16 +272,6 @@ def armada_storage(network: Network, keyvault: Keyvault, test_id: str):
                 docker_connection_string=docker_connection_string,
                 host_connection_string=host_connection_string,
             )
-            if azurite_container_alias == settings.SARA_RAW_STORAGE_CONTAINER:
-                keyvault.set_secret(
-                    secret_name="AZURE-STORAGE-CONNECTION-STRING-DATA",
-                    secret_value=docker_connection_string,
-                )
-            elif azurite_container_alias == settings.SARA_ANON_STORAGE_CONTAINER:
-                keyvault.set_secret(
-                    secret_name="AZURE-STORAGE-CONNECTION-STRING-METADATA",
-                    secret_value=docker_connection_string,
-                )
 
             ensure_blob_containers(host_connection_string, "hua", "kaa", "nls", "test")
 
@@ -304,15 +307,14 @@ def teams_webhook_receiver(network: Network, test_id: str):
         test_id=test_id,
     )
     with container:
-        wait_for_port_mapping_to_be_available(
-            container=container, port=receiver.port
-        )
+        wait_for_port_mapping_to_be_available(container=container, port=receiver.port)
         yield receiver
 
 
 @pytest.fixture
 def flotilla_backend(
     network: Network,
+    oauth_mock: OAuth2Mock,
     flotilla_database: FlotillaDatabase,
     teams_webhook_receiver: TeamsWebhookReceiver,
     test_id: str,
@@ -333,6 +335,12 @@ def flotilla_backend(
 
         backend_url: str = f"http://localhost:{flotilla_backend.get_exposed_port(8000)}"
         wait_for_backend_to_be_responsive(backend_url=backend_url)
+        # Before anything is seeded, confirm the backend actually rejects
+        # unauthenticated callers. Every other assertion in the suite is about
+        # mission behaviour and would pass just as happily against an unsecured
+        # stack, so this is the only thing standing between us and silently
+        # testing a backend with authentication switched off.
+        assert_authentication_is_enforced(f"{backend_url}/robots")
         populate_database_with_minimum_models(backend_url=backend_url)
         wait_for_database_to_be_populated(backend_url=backend_url)
 
@@ -348,6 +356,7 @@ def flotilla_backend(
 @pytest.fixture
 def sara(
     network: Network,
+    oauth_mock: OAuth2Mock,
     sara_database: SaraDatabase,
     armada_storage: ArmadaStorage,
     test_id: str,
@@ -370,6 +379,7 @@ def sara(
 
         sara_url: str = f"http://localhost:{sara_container.get_exposed_port(8100)}"
         wait_for_sara_to_be_responsive(sara_url=sara_url)
+        assert_authentication_is_enforced(f"{sara_url}/api/analysis")
 
         yield Sara(
             sara=sara_container,
@@ -382,9 +392,9 @@ def sara(
 
 @pytest.fixture
 def armada_without_robots(
-    keyvault: Keyvault,
     network: Network,
     test_id: str,
+    oauth_mock: OAuth2Mock,
     flotilla_broker: FlotillaBroker,
     flotilla_database: FlotillaDatabase,
     flotilla_backend: FlotillaBackend,
@@ -395,9 +405,9 @@ def armada_without_robots(
 ):
     armada: Armada = Armada()
 
-    armada.keyvault = keyvault
     armada.network = network
     armada.test_id = test_id
+    armada.oauth_mock = oauth_mock
     armada.sara_database = sara_database
     armada.sara = sara
     armada.flotilla_database = flotilla_database
@@ -409,21 +419,45 @@ def armada_without_robots(
     yield armada
 
 
+def _blob_connection_strings(armada: Armada) -> tuple[str, str]:
+    """In-network Azurite connection strings for ISAR's data and metadata stores.
+
+    These used to be passed through the real Key Vault; they are now read
+    straight off the Azurite fixture.
+    """
+    containers = armada.armada_storage.azurite_containers
+    return (
+        containers[settings.SARA_RAW_STORAGE_CONTAINER].docker_connection_string,
+        containers[settings.SARA_ANON_STORAGE_CONTAINER].docker_connection_string,
+    )
+
+
+def _assert_robots_require_authentication(armada: Armada) -> None:
+    """Confirm every ISAR robot rejects unauthenticated callers.
+
+    Mirrors the check applied to flotilla and sara when their containers start.
+    An unauthenticated POST is refused before the handler runs, so this cannot
+    disturb the robot's state machine.
+    """
+    for robot in armada.robots.values():
+        assert_authentication_is_enforced(
+            isar_url(robot, "/schedule/stop-mission"), method="POST"
+        )
+
+
 @pytest.fixture
 def armada_with_single_successful_robot(armada_without_robots: Armada):
     armada: Armada = armada_without_robots
+    blob_conn_data, blob_conn_metadata = _blob_connection_strings(armada)
     with create_isar_robot_container(
         network=armada.network,
+        openid_config_url=armada.oauth_mock.internal_openid_config_url,
         image=settings.ISAR_ROBOT_IMAGE,
         name=settings.ISAR_ROBOT_NAME,
         port=settings.ISAR_ROBOT_PORT,
         alias=settings.ISAR_ROBOT_ALIAS,
-        blob_storage_connection_string_data=armada.keyvault.get_secret(
-            "AZURE-STORAGE-CONNECTION-STRING-DATA"
-        ).value,
-        blob_storage_connection_string_metadata=armada.keyvault.get_secret(
-            "AZURE-STORAGE-CONNECTION-STRING-METADATA"
-        ).value,
+        blob_storage_connection_string_data=blob_conn_data,
+        blob_storage_connection_string_metadata=blob_conn_metadata,
         test_id=armada.test_id,
     ) as isar_robot:
 
@@ -440,6 +474,7 @@ def armada_with_single_successful_robot(armada_without_robots: Armada):
             alias=settings.ISAR_ROBOT_ALIAS,
             installation_code=installation_code_for_robot,
         )
+        _assert_robots_require_authentication(armada)
         armada.log_startup_info()
         yield armada
 
@@ -447,19 +482,17 @@ def armada_with_single_successful_robot(armada_without_robots: Armada):
 @pytest.fixture
 def armada_with_single_failing_robot(armada_without_robots: Armada):
     armada: Armada = armada_without_robots
+    blob_conn_data, blob_conn_metadata = _blob_connection_strings(armada)
 
     with create_isar_robot_container(
         network=armada.network,
+        openid_config_url=armada.oauth_mock.internal_openid_config_url,
         image=settings.ISAR_ROBOT_IMAGE,
         name=settings.ISAR_ROBOT_NAME,
         port=settings.ISAR_ROBOT_PORT,
         alias=settings.ISAR_ROBOT_ALIAS,
-        blob_storage_connection_string_data=armada.keyvault.get_secret(
-            "AZURE-STORAGE-CONNECTION-STRING-DATA"
-        ).value,
-        blob_storage_connection_string_metadata=armada.keyvault.get_secret(
-            "AZURE-STORAGE-CONNECTION-STRING-METADATA"
-        ).value,
+        blob_storage_connection_string_data=blob_conn_data,
+        blob_storage_connection_string_metadata=blob_conn_metadata,
         should_fail_normal_task=True,
         test_id=armada.test_id,
     ) as isar_robot:
@@ -477,6 +510,7 @@ def armada_with_single_failing_robot(armada_without_robots: Armada):
             alias=settings.ISAR_ROBOT_ALIAS,
             installation_code=installation_code_for_robot,
         )
+        _assert_robots_require_authentication(armada)
         armada.log_startup_info()
         yield armada
 
@@ -500,12 +534,7 @@ def armada_with_multiple_robots(armada_without_robots: Armada):
         4. MissionFailThenLost – mission fails, fails to return home
     """
     armada: Armada = armada_without_robots
-    blob_conn_data: str = armada.keyvault.get_secret(
-        "AZURE-STORAGE-CONNECTION-STRING-DATA"
-    ).value
-    blob_conn_metadata: str = armada.keyvault.get_secret(
-        "AZURE-STORAGE-CONNECTION-STRING-METADATA"
-    ).value
+    blob_conn_data, blob_conn_metadata = _blob_connection_strings(armada)
 
     robot_configs = [
         {
@@ -543,6 +572,7 @@ def armada_with_multiple_robots(armada_without_robots: Armada):
             container = stack.enter_context(
                 create_isar_robot_container(
                     network=armada.network,
+                    openid_config_url=armada.oauth_mock.internal_openid_config_url,
                     image=settings.ISAR_ROBOT_IMAGE,
                     name=cfg["name"],
                     port=settings.ISAR_ROBOT_PORT,
@@ -575,6 +605,7 @@ def armada_with_multiple_robots(armada_without_robots: Armada):
                 installation_code=installation_code,
             )
 
+        _assert_robots_require_authentication(armada)
         armada.log_startup_info()
         yield armada
 

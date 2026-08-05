@@ -12,23 +12,60 @@ EF_STARTUP_PATH="${EF_STARTUP_PATH:-$EF_PROJECT_PATH}"
 EF_CONTEXT="${EF_CONTEXT:-}"
 WAIT_FOR_DB_TIMEOUT="${WAIT_FOR_DB_TIMEOUT:-60}"
 
-# ---------- Secrets required by EF migrations to build ----------
-: "${AZURE_CLIENT_SECRET:?AZURE_CLIENT_SECRET must be set at runtime}"
-: "${AZURE_CLIENT_ID:?AZURE_CLIENT_ID must be set at runtime}"
-: "${AZURE_TENANT_ID:?AZURE_TENANT_ID must be set at runtime}"
+# ---------- Optional inputs ----------
+# The EF design-time context factories in flotilla and sara fall back to reading
+# the connection string from Azure Key Vault when it is absent from config. The
+# caller passes it in as configuration instead (Database__* below), so no Azure
+# credentials are needed here. These are kept only for callers that still rely on
+# the Key Vault path.
+AZURE_CLIENT_SECRET="${AZURE_CLIENT_SECRET:-}"
+AZURE_CLIENT_ID="${AZURE_CLIENT_ID:-}"
+AZURE_TENANT_ID="${AZURE_TENANT_ID:-}"
+export AZURE_CLIENT_SECRET AZURE_CLIENT_ID AZURE_TENANT_ID
 
-echo "Cloning $GIT_REPO @ $GIT_REF ..."
 rm -rf /work/repo
-if [ "$GIT_REF" = "latest" ]; then
-  BRANCH=$(curl -s ${GITHUB_TOKEN:+-H "Authorization: token $GITHUB_TOKEN"} \
-    "https://api.github.com/repos/$GIT_REPO/releases/latest" | jq -r .tag_name)
-  echo "Resolved latest to $BRANCH"
+mkdir -p /work/repo
+
+if [ -n "${LOCAL_REPO_PATH:-}" ]; then
+  # Migrations come from a local checkout mounted read-only, so that locally
+  # built service images and the database schema come from the same source.
+  # Copied rather than used in place: the build writes bin/ and obj/ into the
+  # project, and the mount is read-only precisely so the caller's working tree
+  # cannot be modified.
+  #
+  # bin and obj are excluded not to save space but for correctness: they are
+  # host-architecture build output, and obj/project.assets.json embeds absolute
+  # host paths, both of which break restore inside this container.
+  echo "Copying migrations source from $LOCAL_REPO_PATH ..."
+  [ -d "$LOCAL_REPO_PATH" ] || { echo "LOCAL_REPO_PATH '$LOCAL_REPO_PATH' is not a directory."; exit 1; }
+  tar -C "$LOCAL_REPO_PATH" \
+      --exclude=bin \
+      --exclude=obj \
+      --exclude=node_modules \
+      --exclude=.git \
+      --exclude=TestResults \
+      -cf - . | tar -C /work/repo -xf -
 else
-  BRANCH="main"
+  echo "Cloning $GIT_REPO @ $GIT_REF ..."
+  if [ "$GIT_REF" = "latest" ]; then
+    BRANCH=$(curl -s ${GITHUB_TOKEN:+-H "Authorization: token $GITHUB_TOKEN"} \
+      "https://api.github.com/repos/$GIT_REPO/releases/latest" | jq -r .tag_name)
+    echo "Resolved latest to $BRANCH"
+  else
+    BRANCH="main"
+  fi
+  rm -rf /work/repo
+  git clone --depth 1 --branch "$BRANCH" "https://github.com/$GIT_REPO" /work/repo
 fi
-git clone --depth 1 --branch "$BRANCH" "https://github.com/$GIT_REPO" /work/repo
 
 cd /work/repo
+
+# Guard against a source that does not contain what we expect, rather than
+# letting it surface later as an opaque dotnet-ef failure.
+if ! ls "$EF_PROJECT_PATH"/*.csproj >/dev/null 2>&1; then
+  echo "No .csproj found at '$EF_PROJECT_PATH' in the migrations source."
+  exit 1
+fi
 
 echo "Restoring projects for EF design-time..."
 dotnet restore "$EF_STARTUP_PATH" || dotnet restore "$EF_PROJECT_PATH" || true

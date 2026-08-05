@@ -1,0 +1,11 @@
+{
+  "name": "oauth2-mock",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local OpenID Connect issuer used by the robotics integration tests",
+  "main": "index.mjs",
+  "dependencies": {
+    "oauth2-mock-server": "9.1.0"
+  }
+}

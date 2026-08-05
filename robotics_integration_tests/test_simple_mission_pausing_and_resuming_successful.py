@@ -4,6 +4,9 @@ from loguru import logger
 
 from robotics_integration_tests.armada import Armada
 from robotics_integration_tests.settings.settings import settings
+from robotics_integration_tests.utilities.authentication_assertions import (
+    assert_cannot_pause_mission,
+)
 from robotics_integration_tests.utilities.blob_storage import (
     wait_until_all_expected_files_uploaded,
 )
@@ -12,6 +15,7 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
     resume_mission,
     create_mission,
     get_dummy_mission_payload_with_installation,
+    get_mission_run_by_id,
     schedule_mission,
     wait_for_mission_run_status,
     wait_for_robot_status,
@@ -42,6 +46,22 @@ def test_simple_mission_pausing_and_resuming_successfully(
         backend_url=armada.flotilla_backend.backend_url,
         mission_run_id=mission_run_id,
         expected_status="InProgress",
+    )
+
+    # An unauthorised caller must not be able to pause the mission, whether it
+    # goes through Flotilla or straight at the robot.
+    assert_cannot_pause_mission(armada=armada, robot=robot)
+
+    # ... and the mission must still be running afterwards. Asserting "not
+    # Paused" rather than "is Ongoing" avoids racing normal mission progress;
+    # the property under test is that the rejected calls had no effect.
+    status_after_unauthorised_attempts: str = get_mission_run_by_id(
+        backend_url=armada.flotilla_backend.backend_url,
+        mission_run_id=mission_run_id,
+    ).get("status")
+    assert status_after_unauthorised_attempts != "Paused", (
+        "An unauthorised caller managed to pause the mission run "
+        f"{mission_run_id}"
     )
 
     pause_mission(

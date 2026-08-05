@@ -43,22 +43,11 @@ def create_sara_container(
         .with_env("Mqtt__Port", settings.FLOTILLA_BROKER_PORT)
         .with_env("Mqtt__Password", settings.SARA_MQTT_PASSWORD)
         .with_env("Mqtt__Username", "sara")
+        # Selects appsettings.IntegrationTest.json, which points token validation
+        # at the mock issuer, turns off Key Vault, and pins the database to the
+        # ConnectionString auth path.
         .with_env("ASPNETCORE_ENVIRONMENT", settings.ASPNETCORE_ENVIRONMENT)
-        # Pin the integration-test container to the ConnectionString auth path.
-        # sara's appsettings.Development.json now lists AppRegIdentity first
-        # (equinor/sara#396), which would otherwise wire EF Core against the
-        # dev Azure PostgreSQL server (unreachable from the test docker
-        # network). Mirrors the migration-workflow override in
-        # .github/workflows/run_dotnet_migrations.yml (PR #73).
-        .with_env("Database__AllowedAuthMethods__0", "ConnectionString")
-        .with_env("AZURE_CLIENT_SECRET", settings.SARA_AZURE_CLIENT_SECRET)
-        .with_env("AZURE_CLIENT_ID", settings.SARA_AZURE_CLIENT_ID)
-        .with_env("AZURE_TENANT_ID", settings.SARA_AZURE_TENANT_ID)
-        .with_env("KeyVault__VaultUri", settings.KEYVAULT_URI)
         .with_env("Database__postgresConnectionString", database_connection_string)
-        .with_env("AzureAd__ClientSecret", settings.SARA_AZURE_CLIENT_SECRET)
-        .with_env("AzureAd__ClientId", settings.SARA_AZURE_CLIENT_ID)
-        .with_env("AzureAd__TenantId", settings.SARA_AZURE_TENANT_ID)
         .with_env("Storage__RawStorageAccount", settings.AZURITE_ACCOUNT)
         .with_env(
             f"BlobStorage__{settings.AZURITE_ACCOUNT}__ConnectionString",
