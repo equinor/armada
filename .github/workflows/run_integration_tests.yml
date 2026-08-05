@@ -10,8 +10,14 @@ on:
         default: "latest"
     secrets:
         INTEGRATION_TEST_AZURE_CLIENT_SECRET:
-          required: true
-          description: "Azure client secret for the service principal used in integration tests with access to keyvault"
+          required: false
+          description: |
+            Azure client secret for the service principal with read access to the
+            integration-test key vault, which now holds only the MQTT credentials.
+            No longer used for authentication between the services: those tokens come
+            from a local Keycloak realm. Kept optional rather than removed because
+            this workflow is consumed at @main by every robotics repo and each one
+            declares it; removing it outright would break them all at once.
 
   workflow_dispatch:
     inputs:
@@ -25,6 +31,9 @@ permissions:
   contents: read
 
 env:
+  # Only MQTT credentials are still read from the key vault. Authentication between
+  # the services is handled by a local Keycloak realm started by the test suite,
+  # so no Entra ID app registrations are involved.
   KEYVAULT_NAME: FlotillaTestsKv
   AZURE_TENANT_ID: 3aa4a235-b6e2-48d5-9195-7fcf05b459b0
   AZURE_CLIENT_ID: 17d7c036-e4ff-4df6-87fd-0d648a36a727
@@ -53,15 +62,15 @@ jobs:
         run: |
           echo "Retrieving secrets from Key Vault: $KEYVAULT_NAME"
 
-          # You can list the secret names here
+          # MQTT authentication is username/password, validated by the broker
+          # against the hashed passwd_file committed in equinor/flotilla, so these
+          # remain real secrets. The app-registration client secrets that used to
+          # be fetched here are gone: service-to-service auth now runs against a
+          # local Keycloak realm.
           secrets=(
-            INTEGRATION-TESTS-CLIENT-SECRET
             FLOTILLA-MQTT-PASSWORD
-            FLOTILLA-AZURE-CLIENT-SECRET
             FLOTILLA-BROKER-SERVER-KEY
-            ISAR-AZURE-CLIENT-SECRET
             ISAR-MQTT-PASSWORD
-            SARA-AZURE-CLIENT-SECRET
             SARA-MQTT-PASSWORD
           )
 
@@ -120,13 +129,9 @@ jobs:
           GIT_REPOSITORY_FOR_MIGRATIONS_REF: ${{ steps.images.outputs.git_ref }}
           SARA_GIT_REPOSITORY_FOR_MIGRATIONS_REF: ${{ steps.images.outputs.git_ref }}
 
-          INTEGRATION_TESTS_CLIENT_SECRET: ${{ env.INTEGRATION_TESTS_CLIENT_SECRET }}
           FLOTILLA_MQTT_PASSWORD: ${{ env.FLOTILLA_MQTT_PASSWORD }}
-          FLOTILLA_AZURE_CLIENT_SECRET: ${{ env.FLOTILLA_AZURE_CLIENT_SECRET }}
           FLOTILLA_BROKER_SERVER_KEY: ${{ env.FLOTILLA_BROKER_SERVER_KEY }}
-          ISAR_AZURE_CLIENT_SECRET: ${{ env.ISAR_AZURE_CLIENT_SECRET }}
           ISAR_MQTT_PASSWORD: ${{ env.ISAR_MQTT_PASSWORD }}
-          SARA_AZURE_CLIENT_SECRET: ${{ env.SARA_AZURE_CLIENT_SECRET }}
           SARA_MQTT_PASSWORD: ${{ env.SARA_MQTT_PASSWORD }}
 
         run: uv run --frozen pytest -s -n auto robotics_integration_tests

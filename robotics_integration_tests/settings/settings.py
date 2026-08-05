@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import List
 
 from dotenv import load_dotenv
 from pydantic import Field, computed_field
@@ -6,34 +6,44 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    # Integration test app registration
-    INTEGRATION_TESTS_CLIENT_ID: str = Field(
-        default="17d7c036-e4ff-4df6-87fd-0d648a36a727"
-    )
-    INTEGRATION_TESTS_TENANT_ID: str = Field(
-        default="3aa4a235-b6e2-48d5-9195-7fcf05b459b0"
-    )
-    INTEGRATION_TESTS_CLIENT_SECRET: Optional[str] = Field(default="")
+    # Local Keycloak realm standing in for Azure Entra ID. See
+    # custom_realms/robotics-realm.json for the clients, scopes and roles.
+    KEYCLOAK_IMAGE: str = Field(default="quay.io/keycloak/keycloak:26.4")
+    KEYCLOAK_ALIAS: str = Field(default="keycloak")
+    KEYCLOAK_PORT: int = Field(default=8080)
 
-    # Keyvault configuration (using Flotilla service principle)
-    KEYVAULT_NAME: str = Field(default="FlotillaTestsKv")
+    # The clients used to mint tokens are properties of the realm file, not
+    # configuration, so they live in custom_containers/keycloak.py. Deliberately
+    # not settings: an INTEGRATION_TESTS_CLIENT_SECRET setting would be silently
+    # overridden by the stale Entra value of that name still sitting in many
+    # developers' .env files and in every consuming repository's secrets.
 
-    @computed_field
-    @property
-    def KEYVAULT_URI(self) -> str:
-        return f"https://{self.KEYVAULT_NAME.lower()}.vault.azure.net"
+    # Audiences validated by each service. Plain readable names rather than Entra
+    # app registration GUIDs.
+    FLOTILLA_AUDIENCE: str = Field(default="flotilla-test")
+    ISAR_AUDIENCE: str = Field(default="isar-test")
+    SARA_AUDIENCE: str = Field(default="sara-test")
+
+    # Client scopes requested when minting a token. Unlike Entra, Keycloak does
+    # not derive the audience from the scope: each of these carries a single
+    # audience mapper onto the matching *_AUDIENCE above. Request exactly one per
+    # token -- two audience mappers make Keycloak emit `aud` as an array, and
+    # ISAR's token model accepts only the string form.
+    FLOTILLA_SCOPE: str = Field(default="flotilla-api")
+    ISAR_SCOPE: str = Field(default="isar-api")
+    SARA_SCOPE: str = Field(default="sara-api")
 
     # Flotilla Backend environment
     MQTT_HOST: str = Field(default="broker")
-    FLOTILLA_MQTT_PASSWORD: Optional[str] = Field(default="")
-    ASPNETCORE_ENVIRONMENT: str = Field(default="Development")
-    FLOTILLA_AZURE_CLIENT_SECRET: Optional[str] = Field(default="")
-    FLOTILLA_AZURE_CLIENT_ID: Optional[str] = Field(
-        default="ea4c7b92-47b3-45fb-bd25-a8070f0c495c"
-    )
-    AZURE_TENANT_ID: Optional[str] = Field(
-        default="3aa4a235-b6e2-48d5-9195-7fcf05b459b0"
-    )
+    # MQTT authentication is username/password, validated by the broker against
+    # the hashed passwd_file committed in equinor/flotilla. It is deliberately out
+    # of scope for this work, so these remain real secrets supplied via
+    # the environment or a local .env.
+    FLOTILLA_MQTT_PASSWORD: str = Field(default="")
+    # Selects appsettings.IntegrationTest.json in flotilla and sara, which sets
+    # Authentication:Provider=Oidc, points token validation at the realm above and
+    # disables Key Vault and Redis.
+    ASPNETCORE_ENVIRONMENT: str = Field(default="IntegrationTest")
     FLOTILLA_BACKEND_NAME: str = Field(default="flotilla_backend")
     FLOTILLA_BACKEND_ALIAS: str = Field(default="flotilla_backend")
     FLOTILLA_BACKEND_IMAGE: str = Field(
@@ -42,7 +52,8 @@ class Settings(BaseSettings):
     FLOTILLA_BACKEND_PORT: int = Field(default=8000)
 
     # MQTT Broker environment
-    FLOTILLA_BROKER_SERVER_KEY: Optional[str] = Field(default="")
+    # TLS private key for the test broker; see the note on FLOTILLA_MQTT_PASSWORD.
+    FLOTILLA_BROKER_SERVER_KEY: str = Field(default="")
     FLOTILLA_BROKER_NAME: str = Field(default="flotilla_broker")
     FLOTILLA_BROKER_ALIAS: str = Field(default="broker")
     FLOTILLA_BROKER_IMAGE: str = Field(default="ghcr.io/equinor/flotilla-broker:latest")
@@ -86,14 +97,7 @@ class Settings(BaseSettings):
     )
 
     # ISAR Robot environment
-    ISAR_AZURE_CLIENT_SECRET: Optional[str] = Field(default="")
-    ISAR_MQTT_PASSWORD: Optional[str] = Field(default="")
-    ISAR_AZURE_CLIENT_ID: Optional[str] = Field(
-        default="fd384acd-5c1b-4c44-a1ac-d41d720ed0fe"
-    )
-    ISAR_AZURE_TENANT_ID: Optional[str] = Field(
-        default="3aa4a235-b6e2-48d5-9195-7fcf05b459b0"
-    )
+    ISAR_MQTT_PASSWORD: str = Field(default="")
     ISAR_ROBOT_NAME: str = Field(default="Placebot")
     ISAR_ROBOT_ALIAS: str = Field(default="isar_robot")
     ISAR_ROBOT_IMAGE: str = Field(default="ghcr.io/equinor/isar-robot:latest")
@@ -103,10 +107,6 @@ class Settings(BaseSettings):
     SARA_RAW_STORAGE_CONTAINER: str = Field(default="sara-raw")
     SARA_ANON_STORAGE_CONTAINER: str = Field(default="sara-anon")
     SARA_VIS_STORAGE_CONTAINER: str = Field(default="sara-vis")
-    SARA_AZURE_CLIENT_SECRET: str = Field(default="")
-
-    SARA_AZURE_CLIENT_ID: str = Field(default="dd7e115a-037e-4846-99c4-07561158a9cd")
-    SARA_AZURE_TENANT_ID: str = Field(default="3aa4a235-b6e2-48d5-9195-7fcf05b459b0")
     SARA_IMAGE: str = Field(default="ghcr.io/equinor/sara:latest")
     SARA_NAME: str = Field(default="sara")
     SARA_PORT: int = Field(default=8100)

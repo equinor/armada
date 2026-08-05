@@ -148,6 +148,26 @@ CMD ["isar-start"]
 OVERLAY
 docker build --platform "$PLATFORM" -t "$ISAR_ROBOT_IMAGE" "$TMP_DIR/overlay"
 
+# ---------------------------------------------------------------------------
+# Verify. These checks take seconds; without them a bad image only reveals
+# itself several minutes into the test suite, as a timeout with no obvious cause.
+# ---------------------------------------------------------------------------
+
+log "Verifying images"
+
+verify_dotnet_settings() {
+    local image="$1"
+    if docker run --rm --platform "$PLATFORM" --entrypoint sh "$image" \
+            -c 'test -f /app/appsettings.IntegrationTest.json'; then
+        echo "  OK   $image has appsettings.IntegrationTest.json"
+    else
+        die "$image is missing /app/appsettings.IntegrationTest.json"
+    fi
+}
+
+verify_dotnet_settings "$FLOTILLA_IMAGE"
+verify_dotnet_settings "$SARA_IMAGE"
+
 docker run --rm --platform "$PLATFORM" \
     --entrypoint /app/.venv/bin/python "$ISAR_ROBOT_IMAGE" -c '
 import pathlib, sys
@@ -165,12 +185,18 @@ if count == 0:
         "RobotRetrieveInspectionException"
     )
 
+if "OPENID_CONFIG_URL" not in type(settings).model_fields:
+    problems.append(
+        "isar does not expose OPENID_CONFIG_URL; the local isar overlay did not take"
+    )
+
 for problem in problems:
     print("  FAIL " + problem)
 if problems:
     sys.exit(1)
 
 print(f"  OK   isar-robot has {count} example_data files")
+print("  OK   isar exposes OPENID_CONFIG_URL")
 ' || die "isar-robot image verification failed"
 
 # ---------------------------------------------------------------------------

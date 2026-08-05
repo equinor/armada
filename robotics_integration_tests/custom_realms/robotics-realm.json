@@ -1,0 +1,434 @@
+{
+  "realm": "robotics",
+  "enabled": true,
+  "displayName": "Equinor Robotics (local)",
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "accessTokenLifespan": 1800,
+  "ssoSessionIdleTimeout": 7200,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      {
+        "name": "Role.Admin",
+        "description": "Flotilla super admin (AccessRoleService.cs SUPER_ADMIN_ROLE_NAME)"
+      },
+      {
+        "name": "Role.User.HUA",
+        "description": "Per-installation user role, Huldra"
+      },
+      {
+        "name": "Role.User.KAA",
+        "description": "Per-installation user role, Kaarsto"
+      },
+      {
+        "name": "Role.User.NLS",
+        "description": "Per-installation user role, Nyhamna"
+      },
+      {
+        "name": "Mission.Control",
+        "description": "ISAR REQUIRED_ROLE (isar settings.py REQUIRED_ROLE)"
+      }
+    ]
+  },
+  "clientScopes": [
+    {
+      "name": "entra-compat",
+      "description": "Claims that Entra ID emits and the services depend on, but that Keycloak does not emit by default. See keycloak-plan.md for why each one is here.",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "ver",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "ver",
+            "claim.value": "2.0",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "access.tokenResponse.claim": "false"
+          }
+        },
+        {
+          "name": "nbf",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "nbf",
+            "claim.value": "1",
+            "jsonType.label": "long",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "access.tokenResponse.claim": "false"
+          }
+        },
+        {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        },
+        {
+          "name": "tid",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "tid",
+            "claim.value": "robotics-local-tenant",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        },
+        {
+          "name": "oid",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "id",
+            "claim.name": "oid",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "name": "flotilla-api",
+      "description": "Requests an access token whose aud is flotilla-test",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "flotilla-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "flotilla-test",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "name": "isar-api",
+      "description": "Requests an access token whose aud is isar-test",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "isar-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "isar-test",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "name": "sara-api",
+      "description": "Requests an access token whose aud is sara-test",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "sara-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "sara-test",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pointilla-api",
+      "description": "Requests an access token whose aud is pointilla-test",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "pointilla-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "pointilla-test",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "isar-test",
+      "name": "ISAR (resource)",
+      "description": "Audience target only. ISAR validates aud == isar-test.",
+      "enabled": true,
+      "publicClient": false,
+      "serviceAccountsEnabled": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "secret": "isar-test-secret",
+      "defaultClientScopes": [],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "sara-test",
+      "name": "SARA (resource)",
+      "enabled": true,
+      "publicClient": false,
+      "serviceAccountsEnabled": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "secret": "sara-test-secret",
+      "defaultClientScopes": [],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "pointilla-test",
+      "name": "Pointilla (resource)",
+      "enabled": true,
+      "publicClient": false,
+      "serviceAccountsEnabled": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "secret": "pointilla-test-secret",
+      "defaultClientScopes": [],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "flotilla-test",
+      "name": "Flotilla (resource + downstream caller)",
+      "description": "Both an audience target and a confidential client: Flotilla acquires ISAR/SARA/Pointilla tokens through GenericOidcAuthorizationHeaderProvider.",
+      "enabled": true,
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "secret": "flotilla-test-secret",
+      "defaultClientScopes": [
+        "entra-compat"
+      ],
+      "optionalClientScopes": [
+        "flotilla-api",
+        "isar-api",
+        "sara-api",
+        "pointilla-api"
+      ]
+    },
+    {
+      "clientId": "integration-tests",
+      "name": "Integration tests",
+      "description": "The pytest process. Holds every role the three services require.",
+      "enabled": true,
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "secret": "integration-tests-secret",
+      "defaultClientScopes": [
+        "entra-compat"
+      ],
+      "optionalClientScopes": [
+        "flotilla-api",
+        "isar-api",
+        "sara-api",
+        "pointilla-api"
+      ]
+    },
+    {
+      "clientId": "integration-tests-no-role",
+      "name": "Integration tests (no roles)",
+      "description": "Negative tests: a valid token with a correct audience but no roles at all.",
+      "enabled": true,
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "secret": "integration-tests-no-role-secret",
+      "defaultClientScopes": [
+        "entra-compat"
+      ],
+      "optionalClientScopes": [
+        "flotilla-api",
+        "isar-api",
+        "sara-api",
+        "pointilla-api"
+      ]
+    },
+    {
+      "clientId": "integration-tests-limited-role",
+      "name": "Integration tests (insufficient role)",
+      "description": "Negative tests: holds Role.User.HUA only. Recognised but insufficient, so Flotilla answers 403 where a token with no roles at all gets 401.",
+      "enabled": true,
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "secret": "integration-tests-limited-role-secret",
+      "defaultClientScopes": [
+        "entra-compat"
+      ],
+      "optionalClientScopes": [
+        "flotilla-api",
+        "isar-api",
+        "sara-api",
+        "pointilla-api"
+      ]
+    },
+    {
+      "clientId": "flotilla-frontend",
+      "name": "Flotilla frontend (local development)",
+      "description": "Declared ahead of the frontend work so that picking it up needs no realm migration. Nothing uses this yet. Add profile/email client scopes when that work is picked up; a realm declaring its own clientScopes does not inherit Keycloak's built-ins.",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3001/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3001"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "defaultClientScopes": [
+        "entra-compat"
+      ],
+      "optionalClientScopes": [
+        "flotilla-api",
+        "sara-api"
+      ]
+    },
+    {
+      "clientId": "sara-frontend",
+      "name": "SARA frontend (local development)",
+      "description": "Declared ahead of the frontend work. Nothing uses this yet. Add profile/email client scopes when that work is picked up; a realm declaring its own clientScopes does not inherit Keycloak's built-ins.",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:8099/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8099"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "defaultClientScopes": [
+        "entra-compat"
+      ],
+      "optionalClientScopes": [
+        "sara-api"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-integration-tests",
+      "enabled": true,
+      "serviceAccountClientId": "integration-tests",
+      "realmRoles": [
+        "Role.Admin",
+        "Role.User.HUA",
+        "Role.User.KAA",
+        "Role.User.NLS",
+        "Mission.Control"
+      ]
+    },
+    {
+      "username": "service-account-flotilla-test",
+      "enabled": true,
+      "serviceAccountClientId": "flotilla-test",
+      "realmRoles": [
+        "Role.Admin",
+        "Role.User.HUA",
+        "Role.User.KAA",
+        "Role.User.NLS",
+        "Mission.Control"
+      ]
+    },
+    {
+      "username": "service-account-integration-tests-no-role",
+      "enabled": true,
+      "serviceAccountClientId": "integration-tests-no-role",
+      "realmRoles": []
+    },
+    {
+      "username": "service-account-integration-tests-limited-role",
+      "enabled": true,
+      "serviceAccountClientId": "integration-tests-limited-role",
+      "realmRoles": [
+        "Role.User.HUA"
+      ]
+    },
+    {
+      "username": "dev",
+      "enabled": true,
+      "email": "dev@example.com",
+      "emailVerified": true,
+      "firstName": "Local",
+      "lastName": "Developer",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dev",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Role.Admin",
+        "Role.User.HUA",
+        "Role.User.KAA",
+        "Role.User.NLS",
+        "Mission.Control"
+      ]
+    }
+  ]
+}

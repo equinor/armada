@@ -11,13 +11,10 @@ dependencies = [
   "pytest",
   "testcontainers[postgres,azurite,mqtt]",
     "azure-storage-blob",
-    "azure-identity",
-    "azure-keyvault-secrets",
     "pydantic",
     "pydantic-settings",
     "loguru",
     "python-dotenv",
-    "msal",
     "requests"
 ]
 
