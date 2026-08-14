@@ -68,31 +68,50 @@ jobs:
           repository: ${{ inputs.infrastructure_repository }}
           ssh-key: ${{ secrets.deploy_key }}
 
-      - name: Update image tag in kustomization
+      - name: Update tag, commit, push (retry on concurrent push)
         run: |
-          KUSTOMIZATION_FILE="k8s_kustomize/overlays/${{ inputs.environment }}/kustomization.yaml"
+          set -euo pipefail
 
-          GREP_RESULT=$(grep -n "newName: ${{ inputs.registry }}/${{ inputs.image_name }}$" "$KUSTOMIZATION_FILE" | cut -d ':' -f 1)
-          if [ -z "$GREP_RESULT" ]; then
-            echo "Error: Image ${{ inputs.registry }}/${{ inputs.image_name }} not found in $KUSTOMIZATION_FILE"
-            exit 1
-          fi
-
-          LINE_NUMBERS=($GREP_RESULT)
-          for line_number in "${LINE_NUMBERS[@]}"
-          do
-              TAG_LINE_NUMBER=$((line_number + 1))
-              sed -i "${TAG_LINE_NUMBER} s/newTag:.*/newTag: ${{ inputs.tag }}/" "$KUSTOMIZATION_FILE"
-          done
-
-      - name: Commit and push changes
-        run: |
           git config --global user.email "${EMAIL}"
           git config --global user.name  "GitHub Actions (${NAME})"
-          git add k8s_kustomize/overlays/${{ inputs.environment }}/kustomization.yaml
-          if ! git diff-index --quiet HEAD; then
+
+          KUSTOMIZATION_FILE="k8s_kustomize/overlays/${{ inputs.environment }}/kustomization.yaml"
+          MAX_ATTEMPTS=5
+
+          for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
+            # Resync to remote main before each attempt so we always commit
+            # against its current tip. Prevents non-fast-forward rejects when
+            # multiple deploys race (e.g. SARA promote fanning out).
+            git fetch origin main
+            git reset --hard origin/main
+
+            GREP_RESULT=$(grep -n "newName: ${{ inputs.registry }}/${{ inputs.image_name }}$" "$KUSTOMIZATION_FILE" | cut -d ':' -f 1 || true)
+            if [ -z "$GREP_RESULT" ]; then
+              echo "Error: Image ${{ inputs.registry }}/${{ inputs.image_name }} not found in $KUSTOMIZATION_FILE"
+              exit 1
+            fi
+
+            for line_number in $GREP_RESULT; do
+              TAG_LINE_NUMBER=$((line_number + 1))
+              sed -i "${TAG_LINE_NUMBER} s/newTag:.*/newTag: ${{ inputs.tag }}/" "$KUSTOMIZATION_FILE"
+            done
+
+            git add "$KUSTOMIZATION_FILE"
+            if git diff-index --quiet HEAD; then
+              echo "No changes to commit or push (tag already up to date on origin/main)."
+              exit 0
+            fi
+
             git commit --message "GHA: Update ${SERVICE_NAME} in ${{ inputs.environment }} (${{ inputs.tag }})"
-            git push
-          else
-            echo "No changes to commit or push."
-          fi
+
+            if git push origin HEAD:main; then
+              echo "Push succeeded on attempt ${attempt}."
+              exit 0
+            fi
+
+            echo "Push rejected on attempt ${attempt}; another job likely raced. Backing off and retrying."
+            sleep $(( attempt * 5 ))
+          done
+
+          echo "Error: failed to push after ${MAX_ATTEMPTS} attempts."
+          exit 1
