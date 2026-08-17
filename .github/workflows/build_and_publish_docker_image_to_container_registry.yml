@@ -37,6 +37,12 @@ on:
         type: string
         default: "."
 
+      runs_on:
+        description: "Runner to execute the job on (e.g. 'ubuntu-latest' or a self-hosted runner label)."
+        required: false
+        type: string
+        default: "ubuntu-latest"
+
     secrets:
       registry_username:
         description: "Username for container registry"
@@ -62,7 +68,7 @@ permissions:
 
 jobs:
   build-and-push-docker-image-to-container-registry:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs_on }}
     permissions:
       contents: read
       packages: write

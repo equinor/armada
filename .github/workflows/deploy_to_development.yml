@@ -35,6 +35,11 @@ on:
         required: false
         type: string
         default: ""
+      runs_on:
+        description: "Runner label for the image-build job (e.g. 'ubuntu-latest' or a self-hosted runner label). The deployment update job always uses ubuntu-latest."
+        required: false
+        type: string
+        default: "ubuntu-latest"
     secrets:
       registry_username:
         required: true
@@ -72,6 +77,7 @@ jobs:
       tag: ${{ needs.get-short-sha.outputs.tag }}
       path_to_dockerfile: ${{ inputs.path_to_dockerfile }}
       path_to_context: ${{ inputs.path_to_context }}
+      runs_on: ${{ inputs.runs_on }}
     secrets:
       registry_username: ${{ secrets.registry_username }}
       registry_password: ${{ secrets.registry_password }}

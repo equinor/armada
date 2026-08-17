@@ -26,6 +26,11 @@ on:
       author_name:
         required: true
         type: string
+      runs_on:
+        description: "Runner label for the image-copy job (e.g. 'ubuntu-latest' or a self-hosted runner label). The deployment update job always uses ubuntu-latest."
+        required: false
+        type: string
+        default: "ubuntu-latest"
     secrets:
       staging_registry_username:
         required: true
@@ -76,7 +81,7 @@ jobs:
   copy-image-to-production:
     name: Copy staging image to production registry
     needs: get-staging-version
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs_on }}
     steps:
       - name: Log in to staging registry
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 #v4
