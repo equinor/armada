@@ -1,0 +1,92 @@
+name: Deploy to development (reusable)
+
+# Composes build_and_publish_docker_image_to_container_registry.yml and
+# update_kubernetes_deployment.yml into a "publish short-sha image and
+# update development kustomize overlay" pipeline.
+#
+# Scope: single-image services deploying via kustomize to an equinor
+# infrastructure repository.
+
+on:
+  workflow_call:
+    inputs:
+      registry:
+        description: "Container registry for development images."
+        required: true
+        type: string
+      image_name:
+        description: "Image name (e.g. robotics/sara-anonymizer)."
+        required: true
+        type: string
+      infrastructure_repository:
+        description: "Target infrastructure repository (kustomize)."
+        required: true
+        type: string
+      path_to_dockerfile:
+        required: false
+        type: string
+        default: "Dockerfile"
+      path_to_context:
+        required: false
+        type: string
+        default: "."
+      environment_name:
+        description: "Optional GitHub Environment to gate the deploy on (e.g. 'Development'). Leave empty to disable the gate."
+        required: false
+        type: string
+        default: ""
+    secrets:
+      registry_username:
+        required: true
+      registry_password:
+        required: true
+      deploy_key:
+        description: "SSH deploy key for the infrastructure repository."
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  get-short-sha:
+    name: Compute short-sha tag
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment_name }}
+    outputs:
+      tag: ${{ steps.get-tag.outputs.tag }}
+    steps:
+      - id: get-tag
+        run: echo "tag=dev.$(echo ${{ github.sha }} | cut -c1-8)" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Build and publish image
+    needs: get-short-sha
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build_and_publish_docker_image_to_container_registry.yml
+    with:
+      registry: ${{ inputs.registry }}
+      image_name: ${{ inputs.image_name }}
+      tag: ${{ needs.get-short-sha.outputs.tag }}
+      path_to_dockerfile: ${{ inputs.path_to_dockerfile }}
+      path_to_context: ${{ inputs.path_to_context }}
+    secrets:
+      registry_username: ${{ secrets.registry_username }}
+      registry_password: ${{ secrets.registry_password }}
+
+  deploy:
+    name: Update deployment in development
+    needs: [publish, get-short-sha]
+    uses: ./.github/workflows/update_kubernetes_deployment.yml
+    with:
+      environment: development
+      registry: ${{ inputs.registry }}
+      image_name: ${{ inputs.image_name }}
+      tag: ${{ needs.get-short-sha.outputs.tag }}
+      author_email: ${{ github.event.head_commit.author.email }}
+      author_name: ${{ github.event.head_commit.author.name }}
+      infrastructure_repository: ${{ inputs.infrastructure_repository }}
+    secrets:
+      deploy_key: ${{ secrets.deploy_key }}

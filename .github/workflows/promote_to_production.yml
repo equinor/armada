@@ -1,0 +1,116 @@
+name: Promote to production (reusable)
+
+# Reusable "promote to production" workflow.
+#
+# Reads the tag currently deployed to staging from the infrastructure
+# repository's kustomization, copies that image from the staging registry
+# to the production registry (both `:tag` and `:latest`), and updates the
+# production deployment.
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: "Image name, e.g. robotics/sara-anonymizer."
+        required: true
+        type: string
+      staging_registry:
+        required: true
+        type: string
+      production_registry:
+        required: true
+        type: string
+      infrastructure_repository:
+        required: true
+        type: string
+      author_name:
+        required: true
+        type: string
+    secrets:
+      staging_registry_username:
+        required: true
+      staging_registry_password:
+        required: true
+      production_registry_username:
+        required: true
+      production_registry_password:
+        required: true
+      deploy_key:
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  get-staging-version:
+    name: Get version currently in staging
+    runs-on: ubuntu-latest
+    outputs:
+      version_tag: ${{ steps.get.outputs.tag }}
+    steps:
+      - name: Checkout infrastructure
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+        with:
+          ref: main
+          repository: ${{ inputs.infrastructure_repository }}
+          ssh-key: ${{ secrets.deploy_key }}
+
+      - name: Read staging tag from kustomization
+        id: get
+        run: |
+          KUSTOMIZATION=k8s_kustomize/overlays/staging/kustomization.yaml
+          IMAGE_LINE=$(grep -n "newName: ${{ inputs.staging_registry }}/${{ inputs.image_name }}$" "$KUSTOMIZATION" | cut -d: -f1)
+          if [ -z "$IMAGE_LINE" ]; then
+            echo "Error: image ${{ inputs.staging_registry }}/${{ inputs.image_name }} not found in $KUSTOMIZATION"
+            exit 1
+          fi
+          TAG_LINE=$((IMAGE_LINE + 1))
+          VERSION_TAG=$(sed -n "${TAG_LINE}p" "$KUSTOMIZATION" | awk -F': ' '{print $2}' | tr -d ' ')
+          if [ -z "$VERSION_TAG" ]; then
+            echo "Error: could not parse newTag on line ${TAG_LINE} of $KUSTOMIZATION"
+            exit 1
+          fi
+          echo "tag=$VERSION_TAG" >> "$GITHUB_OUTPUT"
+
+  copy-image-to-production:
+    name: Copy staging image to production registry
+    needs: get-staging-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log in to staging registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 #v4
+        with:
+          registry: ${{ inputs.staging_registry }}
+          username: ${{ secrets.staging_registry_username }}
+          password: ${{ secrets.staging_registry_password }}
+
+      - name: Log in to production registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 #v4
+        with:
+          registry: ${{ inputs.production_registry }}
+          username: ${{ secrets.production_registry_username }}
+          password: ${{ secrets.production_registry_password }}
+
+      - name: Copy image (tag + latest) from staging to production
+        env:
+          TAG: ${{ needs.get-staging-version.outputs.version_tag }}
+        run: |
+          docker buildx imagetools create \
+            --tag ${{ inputs.production_registry }}/${{ inputs.image_name }}:${TAG} \
+            --tag ${{ inputs.production_registry }}/${{ inputs.image_name }}:latest \
+            ${{ inputs.staging_registry }}/${{ inputs.image_name }}:${TAG}
+
+  deploy:
+    name: Update deployment in production
+    needs: [get-staging-version, copy-image-to-production]
+    uses: ./.github/workflows/update_kubernetes_deployment.yml
+    with:
+      environment: production
+      registry: ${{ inputs.production_registry }}
+      image_name: ${{ inputs.image_name }}
+      tag: ${{ needs.get-staging-version.outputs.version_tag }}
+      author_name: ${{ inputs.author_name }}
+      infrastructure_repository: ${{ inputs.infrastructure_repository }}
+    secrets:
+      deploy_key: ${{ secrets.deploy_key }}
