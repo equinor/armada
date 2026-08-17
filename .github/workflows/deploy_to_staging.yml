@@ -1,0 +1,81 @@
+name: Deploy to staging (reusable)
+
+# Composes build_and_publish_docker_image_to_container_registry.yml and
+# update_kubernetes_deployment.yml into a "publish release image and
+# update staging kustomize overlay" pipeline.
+#
+# Scope: single-image services deploying via kustomize to an equinor
+# infrastructure repository. Publishes both `:<tag>` and `:latest`.
+
+on:
+  workflow_call:
+    inputs:
+      registry:
+        description: "Container registry for staging images."
+        required: true
+        type: string
+      image_name:
+        description: "Image name (e.g. robotics/sara-anonymizer)."
+        required: true
+        type: string
+      tag:
+        description: "Release tag to publish and deploy."
+        required: true
+        type: string
+      infrastructure_repository:
+        required: true
+        type: string
+      author_name:
+        required: true
+        type: string
+      path_to_dockerfile:
+        required: false
+        type: string
+        default: "Dockerfile"
+      path_to_context:
+        required: false
+        type: string
+        default: "."
+    secrets:
+      registry_username:
+        required: true
+      registry_password:
+        required: true
+      deploy_key:
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    name: Build and publish image
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build_and_publish_docker_image_to_container_registry.yml
+    with:
+      registry: ${{ inputs.registry }}
+      image_name: ${{ inputs.image_name }}
+      tag: ${{ inputs.tag }}
+      secondary_tag: latest
+      path_to_dockerfile: ${{ inputs.path_to_dockerfile }}
+      path_to_context: ${{ inputs.path_to_context }}
+    secrets:
+      registry_username: ${{ secrets.registry_username }}
+      registry_password: ${{ secrets.registry_password }}
+
+  deploy:
+    name: Update deployment in staging
+    needs: publish
+    uses: ./.github/workflows/update_kubernetes_deployment.yml
+    with:
+      environment: staging
+      registry: ${{ inputs.registry }}
+      image_name: ${{ inputs.image_name }}
+      tag: ${{ inputs.tag }}
+      author_name: ${{ inputs.author_name }}
+      infrastructure_repository: ${{ inputs.infrastructure_repository }}
+    secrets:
+      deploy_key: ${{ secrets.deploy_key }}
