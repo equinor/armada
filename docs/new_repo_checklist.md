@@ -91,10 +91,6 @@ gh api "/repos/$REPO/rulesets" --jq '.[] | {name, target, enforcement, rules: [.
 
 Expected output includes a ruleset with `["deletion","non_fast_forward","required_linear_history","pull_request"]`.
 
-**Known drift across existing repos:**
-- `sara-utilities`, `sara-stid` have no ruleset — need one added.
-- `sara-anonymizer` uses `required_approving_review_count: 0`; the convention is `1`.
-
 ---
 
 ## 3. Required status checks
@@ -165,7 +161,7 @@ gh api -X PUT "/repos/$REPO/environments/Development" \
 gh api "/repos/$REPO/environments" --jq '.environments[].name'
 ```
 
-**Known drift:** most sara repos have zero environments; `sara-anonymizer` has `Development` and `Staging` but no `Production`. Set up all three or none, but keep consistent.
+Set up all three environments or none, but keep the choice consistent across the service's dev/staging/prod workflows.
 
 ---
 
@@ -183,13 +179,6 @@ Required:
 **Verify (names only, values never surface):**
 ```bash
 gh api "/repos/$REPO/actions/secrets" --jq '.secrets[].name'
-```
-
-**Known drift:** several sara repos still have obsolete secrets (`ROBOTICS_AURORADEVACR_*`, `ROBOTICS_AURORAPRODACR_*`) left over from before the registry consolidation. Safe to delete:
-
-```bash
-gh api -X DELETE "/repos/$REPO/actions/secrets/ROBOTICS_AURORADEVACR_USERNAME"
-# ...repeat for other obsolete ones
 ```
 
 ---
@@ -280,4 +269,3 @@ gh api "/repos/$REPO/actions/secrets" --jq '.secrets[].name'
 ## Notes
 
 - These values are **conventions**, not enforced by tooling. If enforcement matters, promote them to an **org-level ruleset** targeting `sara-*` / `flotilla` / `isar-*`; that removes the per-repo drift problem entirely.
-- Repos created before this document exists likely deviate. See the "Known drift" callouts under each section.
