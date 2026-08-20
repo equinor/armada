@@ -31,6 +31,11 @@ on:
         required: false
         type: string
         default: "ubuntu-latest"
+      kustomization_base_path:
+        description: "Base path (inside the infrastructure repo) that contains the per-env overlay directories. The workflow reads the staging tag from '<kustomization_base_path>/staging/kustomization.yaml' and updates '<kustomization_base_path>/production/kustomization.yaml'. Defaults to 'k8s_kustomize/overlays' for backwards compatibility."
+        required: false
+        type: string
+        default: "k8s_kustomize/overlays"
     secrets:
       staging_registry_username:
         required: true
@@ -64,7 +69,7 @@ jobs:
       - name: Read staging tag from kustomization
         id: get
         run: |
-          KUSTOMIZATION=k8s_kustomize/overlays/staging/kustomization.yaml
+          KUSTOMIZATION=${{ inputs.kustomization_base_path }}/staging/kustomization.yaml
           IMAGE_LINE=$(grep -n "newName: ${{ inputs.staging_registry }}/${{ inputs.image_name }}$" "$KUSTOMIZATION" | cut -d: -f1)
           if [ -z "$IMAGE_LINE" ]; then
             echo "Error: image ${{ inputs.staging_registry }}/${{ inputs.image_name }} not found in $KUSTOMIZATION"
@@ -117,5 +122,6 @@ jobs:
       tag: ${{ needs.get-staging-version.outputs.version_tag }}
       author_name: ${{ inputs.author_name }}
       infrastructure_repository: ${{ inputs.infrastructure_repository }}
+      kustomization_base_path: ${{ inputs.kustomization_base_path }}
     secrets:
       deploy_key: ${{ secrets.deploy_key }}

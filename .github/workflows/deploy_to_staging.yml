@@ -41,6 +41,11 @@ on:
         required: false
         type: string
         default: "ubuntu-latest"
+      kustomization_base_path:
+        description: "Base path (inside the infrastructure repo) that contains the per-env overlay directories. Passed through to update_kubernetes_deployment.yml. Defaults to 'k8s_kustomize/overlays' for backwards compatibility."
+        required: false
+        type: string
+        default: "k8s_kustomize/overlays"
     secrets:
       registry_username:
         required: true
@@ -83,5 +88,6 @@ jobs:
       tag: ${{ inputs.tag }}
       author_name: ${{ inputs.author_name }}
       infrastructure_repository: ${{ inputs.infrastructure_repository }}
+      kustomization_base_path: ${{ inputs.kustomization_base_path }}
     secrets:
       deploy_key: ${{ secrets.deploy_key }}
