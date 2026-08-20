@@ -43,6 +43,12 @@ on:
         required: false
         type: string
 
+      kustomization_base_path:
+        description: "Base path (inside the infrastructure repo) that contains the per-env overlay directories. The workflow edits '<kustomization_base_path>/<environment>/kustomization.yaml'. Defaults to 'k8s_kustomize/overlays' for backwards compatibility."
+        required: false
+        type: string
+        default: "k8s_kustomize/overlays"
+
     secrets:
       deploy_key:
         description: "SSH deploy key for the target infrastructure repository"
@@ -70,7 +76,7 @@ jobs:
 
       - name: Update image tag in kustomization
         run: |
-          KUSTOMIZATION_FILE="k8s_kustomize/overlays/${{ inputs.environment }}/kustomization.yaml"
+          KUSTOMIZATION_FILE="${{ inputs.kustomization_base_path }}/${{ inputs.environment }}/kustomization.yaml"
 
           GREP_RESULT=$(grep -n "newName: ${{ inputs.registry }}/${{ inputs.image_name }}$" "$KUSTOMIZATION_FILE" | cut -d ':' -f 1)
           if [ -z "$GREP_RESULT" ]; then
@@ -89,7 +95,7 @@ jobs:
         run: |
           git config --global user.email "${EMAIL}"
           git config --global user.name  "GitHub Actions (${NAME})"
-          git add k8s_kustomize/overlays/${{ inputs.environment }}/kustomization.yaml
+          git add ${{ inputs.kustomization_base_path }}/${{ inputs.environment }}/kustomization.yaml
           if ! git diff-index --quiet HEAD; then
             git commit --message "GHA: Update ${SERVICE_NAME} in ${{ inputs.environment }} (${{ inputs.tag }})"
             git push
