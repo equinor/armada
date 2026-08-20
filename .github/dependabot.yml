@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /robotics_integration_tests/custom_images/migrations_runner
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: dotnet/sdk
+        update-types:
+          - version-update:semver-major
+
+  - package-ecosystem: docker
+    directory: /robotics_integration_tests/custom_images/teams_webhook_receiver
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: python
+        update-types:
+          - version-update:semver-major
