@@ -174,7 +174,7 @@ Required:
 - `ROBOTICS_ROBOTICSDEVACR_USERNAME` / `_PASSWORD` — dev registry
 - `ROBOTICS_ROBOTICSSTAGINGACR_USERNAME` / `_PASSWORD` — staging registry
 - `ROBOTICS_ROBOTICSPRODACR_USERNAME` / `_PASSWORD` — prod registry
-- `ANALYTICS_INFRASTRUCTURE_DEPLOY_KEY` or `ROBOTICS_INFRASTRUCTURE_DEPLOY_KEY` — SSH deploy key on the target infrastructure repo
+- `ROBOTICS_INFRASTRUCTURE_DEPLOY_KEY` — SSH deploy key on `equinor/robotics-infrastructure`
 
 **Verify (names only, values never surface):**
 ```bash
@@ -236,7 +236,7 @@ If a specific team should be auto-requested on PRs, add `.github/CODEOWNERS`. No
 
 Not a GitHub setting, but easily forgotten:
 
-- Add overlays for `development`, `staging`, `production` in `equinor/analytics-infrastructure` (sara services) or `equinor/robotics-infrastructure` (flotilla/isar services) under `k8s_kustomize/overlays/*/kustomization.yaml`.
+- Add overlays for `development`, `staging`, `production` in `equinor/robotics-infrastructure` under `k8s_kustomize/overlays/*/kustomization.yaml`.
 - Registry image path must match what the workflow passes as `image_name` (e.g. `robotics/sara-your-service`).
 
 ---
