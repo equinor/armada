@@ -1,5 +1,5 @@
 from docker.models.networks import Network
-from testcontainers.postgres import PostgresContainer
+from testcontainers.community.postgres import PostgresContainer
 
 from robotics_integration_tests.settings.settings import settings
 
