@@ -89,18 +89,33 @@ jobs:
 
     secrets:
       INTEGRATION_TEST_AZURE_CLIENT_SECRET: ${{ secrets.INTEGRATION_TEST_AZURE_CLIENT_SECRET }}
+      dev_registry_username: ${{ secrets.ROBOTICS_ROBOTICSDEVACR_USERNAME }}
+      dev_registry_password: ${{ secrets.ROBOTICS_ROBOTICSDEVACR_PASSWORD }}
+      staging_registry_username: ${{ secrets.ROBOTICS_ROBOTICSSTAGINGACR_USERNAME }}
+      staging_registry_password: ${{ secrets.ROBOTICS_ROBOTICSSTAGINGACR_PASSWORD }}
 ```
 
-This snippet will enable you to run the integration tests manually and automatically on push to main and published release. It requires the following secret to be set in your repository secrets:
+This snippet will enable you to run the integration tests manually and automatically on push to main and published release. It requires the following secrets to be set in your repository secrets:
 
 ```
 INTEGRATION_TEST_AZURE_CLIENT_SECRET
+ROBOTICS_ROBOTICSDEVACR_USERNAME
+ROBOTICS_ROBOTICSDEVACR_PASSWORD
+ROBOTICS_ROBOTICSSTAGINGACR_USERNAME
+ROBOTICS_ROBOTICSSTAGINGACR_PASSWORD
 ```
 
-This secret now only grants read access to the MQTT credentials in the key vault. It is
-required: the workflow reads those credentials from the key vault on every run.
+`INTEGRATION_TEST_AZURE_CLIENT_SECRET` only grants read access to the MQTT credentials in the
+key vault. It is required: the workflow reads those credentials from the key vault on every run.
+The four `ROBOTICS_*ACR_*` secrets are the same ones the deploy workflows already use to push,
+and are what lets the tests pull the service images. Only the pair matching the lane is used,
+but pass both so either lane can run.
 
-The input `lane` determines which image tag should be applied to the internally developed packages like Flotilla and ISAR. If input is set as `lane=dev` the newest development images (corresponding to newest push to main branch) will be used while `lane=latest` will use the newest release. 
+The input `lane` determines both the registry and the image tag used for the internally developed
+packages like Flotilla and ISAR. `lane=dev` pulls `roboticsdevacr.azurecr.io/robotics/<image>:dev`,
+the newest development images corresponding to the newest push to main; `lane=latest` pulls
+`roboticsstagingacr.azurecr.io/robotics/<image>:latest`, the newest release. The images are no
+longer published to ghcr.io.
 
 ## Local development
 Clone the repository and install dependencies with [uv](https://docs.astral.sh/uv/):
@@ -109,7 +124,7 @@ uv sync
 ```
 
 Ensure the following secrets are populated in your local environment, either as environment variables or in a `.env` file in the repository root directory. These are the MQTT credentials; no
-Azure app registration secrets are needed, and you do **not** need to be logged in with `az`.
+Azure app registration secrets are needed.
 
 ```
 FLOTILLA_BROKER_SERVER_KEY
@@ -120,15 +135,38 @@ SARA_MQTT_PASSWORD
 
 They may be found in the integration test [keyvault](https://portal.azure.com/#@StatoilSRM.onmicrosoft.com/resource/subscriptions/c389567b-2dd0-41fa-a5da-d86b81f80bda/resourceGroups/FlotillaIntegrationTests/providers/Microsoft.KeyVault/vaults/FlotillaTestsKv/overview).
 
+The service images live in the private robotics container registries, so log in to the one
+you want to run against before starting. The defaults point at the released `:latest` images
+in the staging registry:
+
+```bash
+az login
+az acr login --name roboticsstagingacr          # for the released :latest images
+az acr login --name roboticsdevacr              # for the :dev images from main
+```
+
 You may now run the tests with
 
 ```bash
 uv run pytest -s .
 ```
 
+To run the dev lane, the same combination CI uses for a push to `main`:
+
+```bash
+export REGISTRY=roboticsdevacr.azurecr.io/robotics
+FLOTILLA_BACKEND_IMAGE=$REGISTRY/flotilla-backend:dev \
+FLOTILLA_BROKER_IMAGE=$REGISTRY/flotilla-broker:dev \
+ISAR_ROBOT_IMAGE=$REGISTRY/isar-robot:dev \
+SARA_IMAGE=$REGISTRY/sara:dev \
+GIT_REPOSITORY_FOR_MIGRATIONS_REF=dev \
+SARA_GIT_REPOSITORY_FOR_MIGRATIONS_REF=dev \
+uv run pytest -s -n auto robotics_integration_tests
+```
+
 ### Running against locally built images
 
-By default the tests pull `ghcr.io/equinor/{flotilla-backend,sara,isar-robot}`. A change that
+By default the tests pull `roboticsstagingacr.azurecr.io/robotics/{flotilla-backend,sara,isar-robot}`. A change that
 spans armada *and* one of those services therefore cannot be verified until the service change
 is merged and an image published — even though the armada side is what proves the service side
 works.
