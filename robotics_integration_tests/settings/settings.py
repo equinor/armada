@@ -34,9 +34,6 @@ class Settings(BaseSettings):
 
     # Flotilla Backend environment
     MQTT_HOST: str = Field(default="broker")
-    # MQTT is username/password, validated by the broker against the hashed
-    # passwd_file committed in equinor/flotilla, so these remain real secrets.
-    FLOTILLA_MQTT_PASSWORD: str = Field(default="")
     # Has no appsettings file in flotilla or sara: the name only makes them accept
     # a plain-HTTP authority. Everything else is passed from custom_containers/.
     ASPNETCORE_ENVIRONMENT: str = Field(default="IntegrationTest")
@@ -51,8 +48,8 @@ class Settings(BaseSettings):
     FLOTILLA_BACKEND_PORT: int = Field(default=8000)
 
     # MQTT Broker environment
-    # TLS private key for the test broker; see the note on FLOTILLA_MQTT_PASSWORD.
-    FLOTILLA_BROKER_SERVER_KEY: str = Field(default="")
+    # Credentials are generated per run; see utilities/mqtt_credentials.py. The
+    # certificate is issued for FLOTILLA_BROKER_ALIAS, which ISAR verifies.
     FLOTILLA_BROKER_NAME: str = Field(default="flotilla_broker")
     FLOTILLA_BROKER_ALIAS: str = Field(default="broker")
     FLOTILLA_BROKER_IMAGE: str = Field(
@@ -98,7 +95,6 @@ class Settings(BaseSettings):
     )
 
     # ISAR Robot environment
-    ISAR_MQTT_PASSWORD: str = Field(default="")
     ISAR_ROBOT_NAME: str = Field(default="Placebot")
     ISAR_ROBOT_ALIAS: str = Field(default="isar_robot")
     ISAR_ROBOT_IMAGE: str = Field(
@@ -116,7 +112,6 @@ class Settings(BaseSettings):
     SARA_NAME: str = Field(default="sara")
     SARA_PORT: int = Field(default=8100)
     SARA_ALIAS: str = Field(default="sara")
-    SARA_MQTT_PASSWORD: str = Field(default="")
 
     # Azurite environment and configurations
     AZURITE_IMAGE: str = Field(default="mcr.microsoft.com/azure-storage/azurite:latest")
