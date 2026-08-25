@@ -10,12 +10,11 @@ on:
         default: "latest"
     secrets:
         INTEGRATION_TEST_AZURE_CLIENT_SECRET:
-          required: true
+          required: false
           description: |
-            Azure client secret for the service principal with read access to
-            FlotillaTestsKv, which holds the four MQTT credentials. Service-to-service
-            tokens come from a local Keycloak realm and need no Azure identity.
-
+            DEPRECATED and unused; MQTT credentials are generated per run. Still
+            declared so callers passing it keep working. Remove it from your
+            caller, then this declaration can go too.
 
   workflow_dispatch:
     inputs:
@@ -29,12 +28,6 @@ permissions:
   contents: read
 
 env:
-  # Only MQTT credentials are still read from the key vault; service-to-service
-  # authentication runs against a local Keycloak realm.
-  KEYVAULT_NAME: FlotillaTestsKv
-  AZURE_TENANT_ID: 3aa4a235-b6e2-48d5-9195-7fcf05b459b0
-  AZURE_CLIENT_ID: 17d7c036-e4ff-4df6-87fd-0d648a36a727
-
   # The services publish to ghcr.io alongside the robotics ACR. These packages
   # are public, so the test stack pulls them without any registry credential.
   # The lane selects the tag only: main lands as :dev, a release as :latest.
@@ -53,41 +46,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Azure login
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43
-        with:
-          creds: '{"clientId":"${{ env.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.INTEGRATION_TEST_AZURE_CLIENT_SECRET }}","tenantId":"${{ env.AZURE_TENANT_ID }}"}'
-          allow-no-subscriptions: 'true'
-
-      - name: Retrieve secrets from Key Vault
-        id: kv
-        shell: bash
-        run: |
-          echo "Retrieving secrets from Key Vault: $KEYVAULT_NAME"
-
-          # MQTT is username/password, validated by the broker against the hashed
-          # passwd_file committed in equinor/flotilla, so these remain real secrets.
-          secrets=(
-            FLOTILLA-MQTT-PASSWORD
-            FLOTILLA-BROKER-SERVER-KEY
-            ISAR-MQTT-PASSWORD
-            SARA-MQTT-PASSWORD
-          )
-
-          for name in "${secrets[@]}"; do
-            value=$(az keyvault secret show \
-              --vault-name "$KEYVAULT_NAME" \
-              --name "$name" \
-              --query value -o tsv)
-          
-            # Mask the value in any future log output
-            echo "::add-mask::$value"
-          
-            # Replace hyphens with underscores and export to env
-            safe_name="${name//-/_}"
-            echo "${safe_name}=$value" >> $GITHUB_ENV
-          done
-
       - name: Checkout armada repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
         with:
@@ -132,10 +90,5 @@ jobs:
           AZURITE_IMAGE: ${{ steps.images.outputs.azurite }}
           GIT_REPOSITORY_FOR_MIGRATIONS_REF: ${{ steps.images.outputs.git_ref }}
           SARA_GIT_REPOSITORY_FOR_MIGRATIONS_REF: ${{ steps.images.outputs.git_ref }}
-
-          FLOTILLA_MQTT_PASSWORD: ${{ env.FLOTILLA_MQTT_PASSWORD }}
-          FLOTILLA_BROKER_SERVER_KEY: ${{ env.FLOTILLA_BROKER_SERVER_KEY }}
-          ISAR_MQTT_PASSWORD: ${{ env.ISAR_MQTT_PASSWORD }}
-          SARA_MQTT_PASSWORD: ${{ env.SARA_MQTT_PASSWORD }}
 
         run: uv run --frozen pytest -s -n auto robotics_integration_tests

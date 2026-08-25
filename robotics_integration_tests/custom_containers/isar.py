@@ -6,6 +6,7 @@ from robotics_integration_tests.custom_containers.stream_logging_docker_containe
     StreamLoggingDockerContainer,
 )
 from robotics_integration_tests.settings.settings import settings
+from robotics_integration_tests.utilities.mqtt_credentials import MqttCredentials
 
 
 class IsarRobot:
@@ -29,6 +30,7 @@ class IsarRobot:
 def create_isar_robot_container(
     network: Network,
     openid_config_url: str,
+    mqtt_credentials: MqttCredentials,
     image: str = "ghcr.io/equinor/isar-robot:latest",
     name: str = "isar_robot",
     port: int = 3000,
@@ -58,7 +60,9 @@ def create_isar_robot_container(
         .with_network_aliases(alias)
         .with_kwargs(platform="linux/amd64")
         .with_env("ISAR_MQTT_HOST", settings.FLOTILLA_BROKER_ALIAS)
-        .with_env("ISAR_MQTT_PASSWORD", settings.ISAR_MQTT_PASSWORD)
+        .with_env("ISAR_MQTT_PASSWORD", mqtt_credentials.passwords["isar"])
+        # ISAR verifies the broker certificate against this, not the bundled CA.
+        .with_env("ISAR_MQTT_CA_CERT", mqtt_credentials.ca_certificate)
         # ISAR_AZURE_CLIENT_ID is the expected `aud`. settings.py lets a bare
         # AZURE_CLIENT_ID override it, so that variable must not be set here.
         .with_env("ISAR_OPENID_CONFIG_URL", openid_config_url)

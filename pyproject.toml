@@ -15,7 +15,8 @@ dependencies = [
     "pydantic-settings",
     "loguru",
     "python-dotenv",
-    "requests"
+    "requests",
+    "cryptography"
 ]
 
 [project.optional-dependencies]
