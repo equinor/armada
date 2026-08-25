@@ -522,6 +522,7 @@ version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "azure-storage-blob" },
+    { name = "cryptography" },
     { name = "loguru" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -545,6 +546,7 @@ dev = [
 requires-dist = [
     { name = "azure-storage-blob" },
     { name = "black", marker = "extra == 'dev'" },
+    { name = "cryptography" },
     { name = "loguru" },
     { name = "pydantic" },
     { name = "pydantic-settings" },

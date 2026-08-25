@@ -5,6 +5,7 @@ from robotics_integration_tests.custom_containers.stream_logging_docker_containe
     StreamLoggingDockerContainer,
 )
 from robotics_integration_tests.settings.settings import settings
+from robotics_integration_tests.utilities.mqtt_credentials import MqttCredentials
 
 
 class FlotillaBackend:
@@ -28,6 +29,7 @@ def create_flotilla_backend_container(
     keycloak: Keycloak,
     database_connection_string: str,
     teams_notification_webhook_url: str,
+    mqtt_credentials: MqttCredentials,
     image: str = "ghcr.io/equinor/flotilla-backend:latest",
     name: str = "flotilla_backend",
     port: int = 8000,
@@ -43,7 +45,7 @@ def create_flotilla_backend_container(
         .with_kwargs(platform="linux/amd64")
         .with_env("Mqtt__Host", settings.FLOTILLA_BROKER_ALIAS)
         .with_env("Mqtt__Port", settings.FLOTILLA_BROKER_PORT)
-        .with_env("Mqtt__Password", settings.FLOTILLA_MQTT_PASSWORD)
+        .with_env("Mqtt__Password", mqtt_credentials.passwords["flotilla"])
         .with_env("ASPNETCORE_ENVIRONMENT", settings.ASPNETCORE_ENVIRONMENT)
         .with_env("Authentication__Provider", "Oidc")
         .with_env("AzureAd__Authority", keycloak.internal_url)

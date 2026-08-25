@@ -65,6 +65,10 @@ from robotics_integration_tests.custom_containers.stream_logging_docker_containe
     StreamLoggingDockerContainer,
 )
 from robotics_integration_tests.settings.settings import settings
+from robotics_integration_tests.utilities.mqtt_credentials import (
+    MqttCredentials,
+    generate_mqtt_credentials,
+)
 from robotics_integration_tests.utilities.authentication import (
     configure_issuer,
     reset_issuer,
@@ -278,9 +282,16 @@ def armada_storage(network: Network, test_id: str):
 
 
 @pytest.fixture
-def flotilla_broker(network: Network, test_id: str):
+def mqtt_credentials() -> MqttCredentials:
+    """A throwaway CA, broker certificate and password set for this test run."""
+    return generate_mqtt_credentials(broker_hostname=settings.FLOTILLA_BROKER_ALIAS)
+
+
+@pytest.fixture
+def flotilla_broker(network: Network, test_id: str, mqtt_credentials: MqttCredentials):
     with create_flotilla_broker_container(
         network=network,
+        mqtt_credentials=mqtt_credentials,
         image=settings.FLOTILLA_BROKER_IMAGE,
         name=settings.FLOTILLA_BROKER_NAME,
         port=settings.FLOTILLA_BROKER_PORT,
@@ -316,6 +327,7 @@ def flotilla_backend(
     keycloak: Keycloak,
     flotilla_database: FlotillaDatabase,
     teams_webhook_receiver: TeamsWebhookReceiver,
+    mqtt_credentials: MqttCredentials,
     test_id: str,
 ):
     with create_flotilla_backend_container(
@@ -323,6 +335,7 @@ def flotilla_backend(
         keycloak=keycloak,
         database_connection_string=flotilla_database.connection_string,
         teams_notification_webhook_url=teams_webhook_receiver.internal_url,
+        mqtt_credentials=mqtt_credentials,
         image=settings.FLOTILLA_BACKEND_IMAGE,
         name=settings.FLOTILLA_BACKEND_NAME,
         port=settings.FLOTILLA_BACKEND_PORT,
@@ -354,6 +367,7 @@ def sara(
     keycloak: Keycloak,
     sara_database: SaraDatabase,
     armada_storage: ArmadaStorage,
+    mqtt_credentials: MqttCredentials,
     test_id: str,
 ):
     with create_sara_container(
@@ -363,6 +377,7 @@ def sara(
         raw_storage_connection_string=armada_storage.azurite_containers[
             settings.SARA_RAW_STORAGE_CONTAINER
         ].docker_connection_string,
+        mqtt_credentials=mqtt_credentials,
         image=settings.SARA_IMAGE,
         name=settings.SARA_NAME,
         port=settings.SARA_PORT,
@@ -398,6 +413,7 @@ def armada_without_robots(
     sara: Sara,
     armada_storage: ArmadaStorage,
     teams_webhook_receiver: TeamsWebhookReceiver,
+    mqtt_credentials: MqttCredentials,
 ):
     armada: Armada = Armada()
 
@@ -411,6 +427,7 @@ def armada_without_robots(
     armada.flotilla_broker = flotilla_broker
     armada.flotilla_backend = flotilla_backend
     armada.teams_webhook_receiver = teams_webhook_receiver
+    armada.mqtt_credentials = mqtt_credentials
 
     yield armada
 
@@ -443,6 +460,7 @@ def armada_with_single_successful_robot(armada_without_robots: Armada):
     with create_isar_robot_container(
         network=armada.network,
         openid_config_url=armada.keycloak.internal_openid_config_url,
+        mqtt_credentials=armada.mqtt_credentials,
         image=settings.ISAR_ROBOT_IMAGE,
         name=settings.ISAR_ROBOT_NAME,
         port=settings.ISAR_ROBOT_PORT,
@@ -478,6 +496,7 @@ def armada_with_single_failing_robot(armada_without_robots: Armada):
     with create_isar_robot_container(
         network=armada.network,
         openid_config_url=armada.keycloak.internal_openid_config_url,
+        mqtt_credentials=armada.mqtt_credentials,
         image=settings.ISAR_ROBOT_IMAGE,
         name=settings.ISAR_ROBOT_NAME,
         port=settings.ISAR_ROBOT_PORT,
@@ -564,6 +583,7 @@ def armada_with_multiple_robots(armada_without_robots: Armada):
                 create_isar_robot_container(
                     network=armada.network,
                     openid_config_url=armada.keycloak.internal_openid_config_url,
+                    mqtt_credentials=armada.mqtt_credentials,
                     image=settings.ISAR_ROBOT_IMAGE,
                     name=cfg["name"],
                     port=settings.ISAR_ROBOT_PORT,

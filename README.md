@@ -26,8 +26,10 @@ No app registrations, tenant or client secrets are needed. The fixtures assert t
 rejects unauthenticated callers before any test runs, and the mission tests attempt unauthorised
 interference mid-flight and then assert the mission completed unaffected.
 
-MQTT is the exception: username/password validated by the broker against the hashed
-`passwd_file` committed in `equinor/flotilla`, so those remain real secrets.
+MQTT needs no secret either. A CA, a broker certificate and a password per broker user are
+generated per test run in `robotics_integration_tests/utilities/mqtt_credentials.py`; the broker
+assembles them into its configuration on startup. They live only in memory and in the containers
+of that run. TLS and the broker's ACLs are exercised exactly as in a deployed environment.
 
 ### The realm
 `robotics_integration_tests/custom_realms/robotics-realm.json` is imported at startup. It is also
@@ -97,23 +99,12 @@ jobs:
       lane: ${{ github.event_name == 'workflow_run'
             && (github.event.workflow_run.name == 'Deploy to Development' && 'dev' || 'latest')
             || inputs.lane }}
-
-    secrets:
-      INTEGRATION_TEST_AZURE_CLIENT_SECRET: ${{ secrets.INTEGRATION_TEST_AZURE_CLIENT_SECRET }}
 ```
 
 This snippet will enable you to run the integration tests manually, and automatically once the
-deploy workflow that publishes the images has finished. It requires the following secrets to be set in your repository secrets:
-
-```
-INTEGRATION_TEST_AZURE_CLIENT_SECRET
-```
-
-`INTEGRATION_TEST_AZURE_CLIENT_SECRET` only grants read access to the MQTT credentials in the
-key vault. It is required: the workflow reads those credentials from the key vault on every run.
-The four `ROBOTICS_*ACR_*` secrets are the same ones the deploy workflows already use to push,
-and are what lets the tests pull the service images. Only the pair matching the lane is used,
-but pass both so either lane can run.
+deploy workflow that publishes the images has finished. It needs no repository secrets: the
+suite mints its own MQTT credentials per run, authenticates against a local Keycloak realm, and
+pulls the service images from public ghcr.io packages.
 
 The input `lane` determines the image tag used for the internally developed packages like
 Flotilla and ISAR. `lane=dev` pulls `ghcr.io/equinor/<image>:dev`, the newest development images
@@ -138,27 +129,9 @@ Clone the repository and install dependencies with [uv](https://docs.astral.sh/u
 uv sync
 ```
 
-Ensure the following secrets are populated in your local environment, either as environment variables or in a `.env` file in the repository root directory. These are the MQTT credentials; no
-Azure app registration secrets are needed.
-
-```
-FLOTILLA_BROKER_SERVER_KEY
-FLOTILLA_MQTT_PASSWORD
-ISAR_MQTT_PASSWORD
-SARA_MQTT_PASSWORD
-```
-
-They may be found in the integration test [keyvault](https://portal.azure.com/#@StatoilSRM.onmicrosoft.com/resource/subscriptions/c389567b-2dd0-41fa-a5da-d86b81f80bda/resourceGroups/FlotillaIntegrationTests/providers/Microsoft.KeyVault/vaults/FlotillaTestsKv/overview).
-
-The service images live in the private robotics container registries, so log in to the one
-you want to run against before starting. The defaults point at the released `:latest` images
-in the staging registry:
-
-```bash
-az login
-az acr login --name roboticsstagingacr          # for the released :latest images
-az acr login --name roboticsdevacr              # for the :dev images from main
-```
+The suite needs no secrets and no `.env`. Authentication runs against a local Keycloak realm and
+the MQTT credentials are generated per run. The service images are public ghcr.io packages, so
+no registry login is needed either.
 
 You may now run the tests with
 
@@ -181,7 +154,7 @@ uv run pytest -s -n auto robotics_integration_tests
 
 ### Running against locally built images
 
-By default the tests pull `ghcr.io/equinor/{flotilla-backend,sara,isar-robot}`. A change that
+By default the tests pull `ghcr.io/equinor/{flotilla-backend,flotilla-broker,sara,isar-robot}`. A change that
 spans armada *and* one of those services therefore cannot be verified until the service change
 is merged and an image published — even though the armada side is what proves the service side
 works.
