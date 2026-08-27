@@ -61,11 +61,16 @@ In your repository, setup the following workflow:
 ```yaml
 name: Run integration tests
 
+# Chained off the deploy workflows rather than triggered directly by push or
+# release. Both used to fire on the same event, so the tests started while the
+# images were still building and pulled the previous :dev or :latest image.
+#
+# The names below must match the `name:` of deploy_to_development.yml and
+# deploy_to_staging.yml. Renaming either one silently breaks this chain.
 on:
-  push:
-    branches: [ main ]
-  release:
-    types: [ published ]
+  workflow_run:
+    workflows: ["Deploy to Development", "Deploy to Staging"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       lane:
@@ -77,15 +82,21 @@ permissions:
   contents: read
   packages: read
 
+concurrency:
+  group: integration-tests-${{ github.event.workflow_run.name || inputs.lane }}
+  cancel-in-progress: true
+
 jobs:
   run-integration-tests:
+    # A cancelled or failed deploy leaves the registry tag pointing at the
+    # previous image, which is exactly what this workflow must not test.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     uses: equinor/armada/.github/workflows/run_integration_tests.yml@main
     with:
-      # Pick lane automatically based on event, or honor manual input
-      lane: ${{ github.event_name == 'push' && 'dev'
-            || github.event_name == 'release' && 'latest'
-            || github.event_name == 'workflow_dispatch' && inputs.lane
-            || 'latest' }}
+      # Pick lane from the deploy workflow that triggered us, or honor manual input
+      lane: ${{ github.event_name == 'workflow_run'
+            && (github.event.workflow_run.name == 'Deploy to Development' && 'dev' || 'latest')
+            || inputs.lane }}
 
     secrets:
       INTEGRATION_TEST_AZURE_CLIENT_SECRET: ${{ secrets.INTEGRATION_TEST_AZURE_CLIENT_SECRET }}
@@ -95,7 +106,8 @@ jobs:
       staging_registry_password: ${{ secrets.ROBOTICS_ROBOTICSSTAGINGACR_PASSWORD }}
 ```
 
-This snippet will enable you to run the integration tests manually and automatically on push to main and published release. It requires the following secrets to be set in your repository secrets:
+This snippet will enable you to run the integration tests manually, and automatically once the
+deploy workflow that publishes the images has finished. It requires the following secrets to be set in your repository secrets:
 
 ```
 INTEGRATION_TEST_AZURE_CLIENT_SECRET
@@ -116,6 +128,18 @@ packages like Flotilla and ISAR. `lane=dev` pulls `roboticsdevacr.azurecr.io/rob
 the newest development images corresponding to the newest push to main; `lane=latest` pulls
 `roboticsstagingacr.azurecr.io/robotics/<image>:latest`, the newest release. The images are no
 longer published to ghcr.io.
+
+Both lanes read a mutable tag, so the tests must not start until the deploy workflow that
+writes that tag has finished. Triggering on `push`/`release` directly makes the two run in
+parallel and the tests then pull the *previous* image. This is why the snippet above chains off
+`workflow_run` instead. There is no propagation delay to wait out beyond that: both registries
+are single-region Basic ACRs with no geo-replication, and the registry API only acknowledges the
+manifest `PUT` once the tag resolves to the new digest, so a successful deploy run means the tag
+is already pullable.
+
+Note that this orders the lane's tag for the repository that triggered the run only. The three
+image producing repositories share the `:dev` and `:latest` tags, so a concurrent deploy in
+another repository can still swap a different service's image mid-run.
 
 ## Local development
 Clone the repository and install dependencies with [uv](https://docs.astral.sh/uv/):
