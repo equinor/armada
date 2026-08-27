@@ -16,29 +16,6 @@ on:
             FlotillaTestsKv, which holds the four MQTT credentials. Service-to-service
             tokens come from a local Keycloak realm and need no Azure identity.
 
-        dev_registry_username:
-          required: false
-          description: |
-            Username for roboticsdevacr.azurecr.io. Required for the dev lane;
-            pass ROBOTICS_ROBOTICSDEVACR_USERNAME.
-
-        dev_registry_password:
-          required: false
-          description: |
-            Password for roboticsdevacr.azurecr.io. Required for the dev lane;
-            pass ROBOTICS_ROBOTICSDEVACR_PASSWORD.
-
-        staging_registry_username:
-          required: false
-          description: |
-            Username for roboticsstagingacr.azurecr.io. Required for the latest lane;
-            pass ROBOTICS_ROBOTICSSTAGINGACR_USERNAME.
-
-        staging_registry_password:
-          required: false
-          description: |
-            Password for roboticsstagingacr.azurecr.io. Required for the latest lane;
-            pass ROBOTICS_ROBOTICSSTAGINGACR_PASSWORD.
 
   workflow_dispatch:
     inputs:
@@ -58,16 +35,15 @@ env:
   AZURE_TENANT_ID: 3aa4a235-b6e2-48d5-9195-7fcf05b459b0
   AZURE_CLIENT_ID: 17d7c036-e4ff-4df6-87fd-0d648a36a727
 
-  # The service images are no longer published to ghcr.io. Each lane pulls from
-  # the registry its own deploy workflow pushes to: a push to main lands in the
-  # dev registry as :dev, a release lands in the staging registry as :latest.
-  # These are repository paths within that registry, not complete image refs.
-  DEV_REGISTRY: roboticsdevacr.azurecr.io
-  STAGING_REGISTRY: roboticsstagingacr.azurecr.io
-  FLOTILLA_BACKEND_REPOSITORY: robotics/flotilla-backend
-  FLOTILLA_BROKER_REPOSITORY: robotics/flotilla-broker
-  ISAR_ROBOT_REPOSITORY: robotics/isar-robot
-  SARA_REPOSITORY: robotics/sara
+  # The services publish to ghcr.io alongside the robotics ACR. These packages
+  # are public, so the test stack pulls them without any registry credential.
+  # The lane selects the tag only: main lands as :dev, a release as :latest.
+  # These are repository paths within the registry, not complete image refs.
+  REGISTRY: ghcr.io
+  FLOTILLA_BACKEND_REPOSITORY: equinor/flotilla-backend
+  FLOTILLA_BROKER_REPOSITORY: equinor/flotilla-broker
+  ISAR_ROBOT_REPOSITORY: equinor/isar-robot
+  SARA_REPOSITORY: equinor/sara
 
   POSTGRESQL_IMAGE: postgres:16
   AZURITE_IMAGE: mcr.microsoft.com/azure-storage/azurite:latest
@@ -123,11 +99,7 @@ jobs:
         id: images
         run: |
           TAG="${{ inputs.lane }}"
-          if [ "$TAG" = "dev" ]; then
-            REGISTRY="${{ env.DEV_REGISTRY }}"
-          else
-            REGISTRY="${{ env.STAGING_REGISTRY }}"
-          fi
+          REGISTRY="${{ env.REGISTRY }}"
           {
             echo "registry=${REGISTRY}"
             echo "flotilla_backend=${REGISTRY}/${{ env.FLOTILLA_BACKEND_REPOSITORY }}:${TAG}"
@@ -138,13 +110,6 @@ jobs:
             echo "azurite=${{ env.AZURITE_IMAGE }}"
             echo "git_ref=${TAG}"
           } >> $GITHUB_OUTPUT
-
-      - name: Log in to the robotics container registry
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 #v4
-        with:
-          registry: ${{ steps.images.outputs.registry }}
-          username: ${{ inputs.lane == 'dev' && secrets.dev_registry_username || secrets.staging_registry_username }}
-          password: ${{ inputs.lane == 'dev' && secrets.dev_registry_password || secrets.staging_registry_password }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b #v8.1.0
