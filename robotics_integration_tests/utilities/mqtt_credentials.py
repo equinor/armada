@@ -12,7 +12,10 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
-# Must match broker/mosquitto/config/access_control in equinor/flotilla.
+# Must match broker/mosquitto/config/access_control in equinor/flotilla. A user
+# missing here is caught at startup: the broker refuses to run when MQTT_PASSWORDS
+# does not cover every user in that file, so the drift fails the suite loudly
+# rather than silently leaving a service unable to authenticate.
 MQTT_USERS = ["admin", "flotilla", "isar", "analytics", "sara"]
 
 CERTIFICATE_VALIDITY = datetime.timedelta(days=1)
