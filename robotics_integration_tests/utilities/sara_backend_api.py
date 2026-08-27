@@ -56,27 +56,52 @@ def wait_for_sara_to_be_responsive(sara_url: str, timeout: int = 60) -> None:
             return
 
 
+def _logs_to_text(logs: Any) -> str:
+    if logs is None:
+        return ""
+    if isinstance(logs, str):
+        return logs
+    if isinstance(logs, (bytes, bytearray)):
+        return logs.decode("utf-8", errors="replace")
+    if isinstance(logs, (list, tuple)):
+        return "\n".join(_logs_to_text(part) for part in logs)
+    return str(logs)
+
+
 def wait_for_sara_logs(
     container: StreamLoggingDockerContainer, log_message: str, timeout: int = 60
-) -> List[Dict]:
-
-    def logs_to_text(logs: Any) -> str:
-        if logs is None:
-            return ""
-        if isinstance(logs, str):
-            return logs
-        if isinstance(logs, (bytes, bytearray)):
-            return logs.decode("utf-8", errors="replace")
-        if isinstance(logs, (list, tuple)):
-            return "\n".join(logs_to_text(part) for part in logs)
-        return str(logs)
-
+) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
-        logs = container.get_logs()
-        logs = logs_to_text(logs)
-
-        if log_message in logs:
+        if log_message in _logs_to_text(container.get_logs()):
             return
         time.sleep(1)
     raise AssertionError(f"Did not find log line within {timeout}s: {log_message}")
+
+
+def wait_for_sara_log_count(
+    container: StreamLoggingDockerContainer,
+    log_message: str,
+    expected_count: int,
+    timeout: int = 60,
+) -> None:
+    """Poll until a log line has occurred exactly expected_count times.
+
+    Waiting for a count rather than a single occurrence is what lets a caller
+    assert that SARA did *not* act on something: wait for the log line that
+    proves every message has been processed, then assert the count of the
+    action itself.
+    """
+    deadline = time.time() + timeout
+    count = 0
+    while time.time() < deadline:
+        count = _logs_to_text(container.get_logs()).count(log_message)
+        if count >= expected_count:
+            break
+        time.sleep(1)
+
+    if count != expected_count:
+        raise AssertionError(
+            f"Expected SARA to log '{log_message}' exactly {expected_count} times "
+            f"within {timeout}s, but it occurred {count} times"
+        )
