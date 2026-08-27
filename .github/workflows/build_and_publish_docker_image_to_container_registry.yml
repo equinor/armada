@@ -43,6 +43,16 @@ on:
         type: string
         default: "ubuntu-latest"
 
+      push_to_ghcr:
+        description: >
+          Additionally publish the image to ghcr.io/<owner>/<name> in the same
+          build. Only for public repositories: GHCR packages must be public for
+          other repositories to pull them without a stored credential. Never
+          enable for an image that bundles licensed third-party software.
+        required: false
+        type: boolean
+        default: false
+
     secrets:
       registry_username:
         description: "Username for container registry"
@@ -87,11 +97,34 @@ jobs:
           username: ${{ secrets.registry_username }}
           password: ${{ secrets.registry_password }}
 
+      - name: Log in to ghcr.io
+        if: ${{ inputs.push_to_ghcr }}
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 #v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # GHCR has no nested repositories, so the ACR path's trailing segment is
+      # used under the owner: robotics/isar-robot -> ghcr.io/equinor/isar-robot.
+      - name: Determine image references
+        id: refs
+        run: |
+          {
+            echo "images<<EOF"
+            echo "${{ inputs.registry }}/${{ inputs.image_name }}"
+            if [ "${{ inputs.push_to_ghcr }}" = "true" ]; then
+              echo "ghcr.io/${{ github.repository_owner }}/${{ inputs.image_name }}" |
+                sed 's#\(ghcr.io/[^/]*/\).*/#\1#'
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf #v6
         with:
-          images: ${{ inputs.registry }}/${{ inputs.image_name }}
+          images: ${{ steps.refs.outputs.images }}
           tags: |
             type=raw,value=${{ inputs.tag }}
             type=raw,value=${{ inputs.secondary_tag }},enable=${{ inputs.secondary_tag != '' }}
