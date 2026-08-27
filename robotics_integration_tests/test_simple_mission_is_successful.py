@@ -8,13 +8,17 @@ from robotics_integration_tests.utilities.blob_storage import (
     wait_until_all_expected_files_uploaded,
 )
 from robotics_integration_tests.utilities.flotilla_backend_api import (
+    DUMMY_MISSION_TASKS_REQUESTING_ANALYSIS,
     create_mission,
     get_dummy_mission_payload_with_installation,
     schedule_mission,
     wait_for_mission_run_status,
     wait_for_robot_status,
 )
-from robotics_integration_tests.utilities.sara_backend_api import wait_for_sara_logs
+from robotics_integration_tests.utilities.sara_backend_api import (
+    wait_for_sara_log_count,
+    wait_for_sara_logs,
+)
 
 
 def test_simple_mission_with_three_tags_is_successful(
@@ -56,7 +60,24 @@ def test_simple_mission_with_three_tags_is_successful(
         expected_status="Home",
     )
 
+    # The fencilla chain starts with the anonymizer, and there is no Argo in
+    # the test environment, so SARA is expected to fail triggering it.
     wait_for_sara_logs(
         container=armada.sara.container,
         log_message="Failed to trigger workflow anonymizer",
+    )
+
+    # SARA runs only the analyses a mission explicitly asks for; there is no
+    # default analysis by file extension. Wait until every inspection result
+    # has been ingested, then assert that only the tasks requesting an analysis
+    # triggered one.
+    wait_for_sara_log_count(
+        container=armada.sara.container,
+        log_message="Created inspection record with InspectionId",
+        expected_count=len(mission_run.get("tasks")),
+    )
+    wait_for_sara_log_count(
+        container=armada.sara.container,
+        log_message="Triggering workflow anonymizer",
+        expected_count=DUMMY_MISSION_TASKS_REQUESTING_ANALYSIS,
     )

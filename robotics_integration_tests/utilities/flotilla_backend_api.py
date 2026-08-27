@@ -11,6 +11,16 @@ from robotics_integration_tests.utilities.authentication import (
     retrieve_access_token_for_integration_tests_app,
 )
 
+# SARA only runs the analyses a mission explicitly asks for; there is no
+# default-analysis-by-file-extension fallback. The dummy mission therefore
+# requests one analysis type on some tasks and none on others, so the suite
+# covers both branches. Flotilla maps this to the SARA analysis "fencilla"
+# (IsarMissionDefinition.ToSaraAnalysisKeys), whose workflow chain begins with
+# the anonymizer.
+DUMMY_MISSION_ANALYSIS_TYPE = "Fencilla"
+# Number of tasks in the dummy mission that request an analysis.
+DUMMY_MISSION_TASKS_REQUESTING_ANALYSIS = 2
+
 
 def _add_headers() -> Dict[str, str]:
     access_token: str = retrieve_access_token_for_integration_tests_app(
@@ -52,6 +62,11 @@ def set_current_inspection_area_for_robot(
 def get_dummy_mission_payload_with_installation(
     installation_code: str,
 ) -> Dict:
+    """Three image tasks, two of which request an analysis.
+
+    The third task deliberately requests no analysis: SARA runs only the
+    analyses a mission asks for, so that task must not produce an Analysis.
+    """
     return {
         "tasks": [
             {
@@ -62,7 +77,7 @@ def get_dummy_mission_payload_with_installation(
                     "orientation": {"x": 0, "y": 1, "z": 0, "w": 1.5707964},
                 },
                 "targetPosition": {"x": 112.252, "y": 284.027, "z": 29.779},
-                "analysisTypes": [],
+                "analysisTypes": [DUMMY_MISSION_ANALYSIS_TYPE],
                 "sensorType": "Image",
             },
             {
@@ -73,7 +88,7 @@ def get_dummy_mission_payload_with_installation(
                     "orientation": {"x": 0, "y": 1, "z": 0, "w": 3.1415927},
                 },
                 "targetPosition": {"x": 295.62, "y": 95.589, "z": 29.767},
-                "analysisTypes": [],
+                "analysisTypes": [DUMMY_MISSION_ANALYSIS_TYPE],
                 "sensorType": "Image",
             },
             {
