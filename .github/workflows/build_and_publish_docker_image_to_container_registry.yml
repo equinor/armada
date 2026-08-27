@@ -43,6 +43,32 @@ on:
         type: string
         default: "ubuntu-latest"
 
+      use_oidc:
+        description: >
+          Authenticate to the container registry with a GitHub OIDC token
+          exchanged for the robotics ACR push managed identity, instead of a
+          registry username/password. Requires `environment`, and the calling
+          job must grant `id-token: write`.
+        required: false
+        type: boolean
+        default: false
+
+      environment:
+        description: >
+          GitHub Environment the publish job runs in. Scopes `vars` lookups and
+          is what the OIDC subject claim carries — the federated credential on
+          the Azure side is bound to `repo:<org>/<repo>:environment:<name>`.
+          Only needed with use_oidc.
+        required: false
+        type: string
+        default: ""
+
+      azure_subscription_id:
+        description: "Subscription holding the registry. Only needed with use_oidc."
+        required: false
+        type: string
+        default: ""
+
       push_to_ghcr:
         description: >
           Additionally publish the image to ghcr.io/<owner>/<name> in the same
@@ -55,12 +81,12 @@ on:
 
     secrets:
       registry_username:
-        description: "Username for container registry"
-        required: true
+        description: "Username for container registry. Unused when use_oidc is true."
+        required: false
 
       registry_password:
-        description: "Password for container registry"
-        required: true
+        description: "Password for container registry. Unused when use_oidc is true."
+        required: false
 
       anymal_download_password:
         description: "Password to download software during build. Only required for isar-anymal."
@@ -79,9 +105,16 @@ permissions:
 jobs:
   build-and-push-docker-image-to-container-registry:
     runs-on: ${{ inputs.runs_on }}
+    # Empty unless use_oidc is set, which GitHub treats as "no environment" —
+    # deploy_to_development.yml has relied on that for environment_name since
+    # before this change.
+    environment: ${{ inputs.environment }}
     permissions:
       contents: read
       packages: write
+      # Only consumed on the OIDC path, but declared unconditionally because
+      # permissions cannot be set conditionally. Every caller already grants it.
+      id-token: write
 
     steps:
       - name: Checkout repository
@@ -91,11 +124,30 @@ jobs:
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd #v4
 
       - name: Log in to the Container registry
+        if: ${{ !inputs.use_oidc }}
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 #v4
         with:
           registry: ${{ inputs.registry }}
           username: ${{ secrets.registry_username }}
           password: ${{ secrets.registry_password }}
+
+      - name: Azure login (OIDC / federated credential)
+        if: ${{ inputs.use_oidc }}
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 #v2.3.0
+        with:
+          # Environment-scoped variables, resolved via the job's environment
+          # above. ACR_PUSH_CLIENT_ID is the robotics-gha-push-<env> identity,
+          # deliberately not CLIENTID — that is the database migration identity
+          # and must not gain push rights.
+          client-id: ${{ vars.ACR_PUSH_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ inputs.azure_subscription_id }}
+
+      - name: Log in to the Container registry with the federated token
+        if: ${{ inputs.use_oidc }}
+        run: az acr login --name "${REGISTRY%%.*}"
+        env:
+          REGISTRY: ${{ inputs.registry }}
 
       - name: Log in to ghcr.io
         if: ${{ inputs.push_to_ghcr }}
