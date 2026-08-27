@@ -46,6 +46,15 @@ on:
         required: false
         type: string
         default: "k8s_kustomize/overlays"
+      push_to_ghcr:
+        description: >
+          Additionally publish the image to ghcr.io/<owner>/<name>. Public
+          repositories only. Does not affect the registry the deployment is
+          rolled out from, which stays the robotics ACR.
+        required: false
+        type: boolean
+        default: false
+
     secrets:
       registry_username:
         required: true
@@ -73,6 +82,7 @@ jobs:
       path_to_dockerfile: ${{ inputs.path_to_dockerfile }}
       path_to_context: ${{ inputs.path_to_context }}
       runs_on: ${{ inputs.runs_on }}
+      push_to_ghcr: ${{ inputs.push_to_ghcr }}
     secrets:
       registry_username: ${{ secrets.registry_username }}
       registry_password: ${{ secrets.registry_password }}
