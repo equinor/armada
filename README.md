@@ -121,21 +121,42 @@ ROBOTICS_ROBOTICSSTAGINGACR_PASSWORD
 key vault. It is required: the workflow reads those credentials from the key vault on every run.
 The four `ROBOTICS_*ACR_*` secrets are the same ones the deploy workflows already use to push,
 and are what lets the tests pull the service images. Only the pair matching the lane is used,
-but pass both so either lane can run.
+but pass both so either lane can run. They can be omitted entirely when `use_ghcr` is set.
 
-The input `lane` determines both the registry and the image tag used for the internally developed
-packages like Flotilla and ISAR. `lane=dev` pulls `roboticsdevacr.azurecr.io/robotics/<image>:dev`,
-the newest development images corresponding to the newest push to main; `lane=latest` pulls
-`roboticsstagingacr.azurecr.io/robotics/<image>:latest`, the newest release. The images are no
-longer published to ghcr.io.
+The input `lane` determines the image tag used for the internally developed packages like
+Flotilla and ISAR: `lane=dev` pulls `<image>:dev`, the newest development images corresponding
+to the newest push to main, and `lane=latest` pulls `<image>:latest`, the newest release.
+
+The input `use_ghcr` determines which registry that tag is read from. The services publish to
+both the robotics ACRs and `ghcr.io` in the same build, so the two hold the same images:
+
+| `use_ghcr` | `lane=dev` | `lane=latest` |
+| --- | --- | --- |
+| `false` (default) | `roboticsdevacr.azurecr.io/robotics/<image>:dev` | `roboticsstagingacr.azurecr.io/robotics/<image>:latest` |
+| `true` | `ghcr.io/equinor/<image>:dev` | `ghcr.io/equinor/<image>:latest` |
+
+`ghcr.io` has no nested repositories, so the `robotics/` prefix is dropped there. The packages
+are public and the workflow authenticates with the built-in `GITHUB_TOKEN`, so `use_ghcr: true`
+needs no registry credential at all — only `packages: read` in the caller's `permissions:`,
+which the snippet above already declares.
+
+The default remains the ACR because it is the registry the deployments actually roll out from,
+and therefore the one whose contents a failing test should be describing.
+
+> **`use_ghcr` is only trustworthy on `lane=dev` until the next release of each service.**
+> Publishing to `ghcr.io` was reinstated by equinor/armada#101 after having been switched off,
+> and the `ghcr.io` `:latest` tags still point at the images from before it was switched off.
+> They exist and they pull, so nothing fails loudly — the tests would simply run against a
+> weeks-old image. The `:dev` tags are already correct, because a push to `main` refreshes them.
+> Each `:latest` becomes correct the first time that service publishes a release.
 
 Both lanes read a mutable tag, so the tests must not start until the deploy workflow that
 writes that tag has finished. Triggering on `push`/`release` directly makes the two run in
 parallel and the tests then pull the *previous* image. This is why the snippet above chains off
-`workflow_run` instead. There is no propagation delay to wait out beyond that: both registries
-are single-region Basic ACRs with no geo-replication, and the registry API only acknowledges the
+`workflow_run` instead. There is no propagation delay to wait out beyond that: the ACRs are
+single-region Basic SKUs with no geo-replication, and the registry API only acknowledges the
 manifest `PUT` once the tag resolves to the new digest, so a successful deploy run means the tag
-is already pullable.
+is already pullable. The same holds for `ghcr.io`, which is pushed in the same build step.
 
 Note that this orders the lane's tag for the repository that triggered the run only. The three
 image producing repositories share the `:dev` and `:latest` tags, so a concurrent deploy in
@@ -159,15 +180,17 @@ SARA_MQTT_PASSWORD
 
 They may be found in the integration test [keyvault](https://portal.azure.com/#@StatoilSRM.onmicrosoft.com/resource/subscriptions/c389567b-2dd0-41fa-a5da-d86b81f80bda/resourceGroups/FlotillaIntegrationTests/providers/Microsoft.KeyVault/vaults/FlotillaTestsKv/overview).
 
-The service images live in the private robotics container registries, so log in to the one
-you want to run against before starting. The defaults point at the released `:latest` images
-in the staging registry:
+The defaults point at the released `:latest` images in the private robotics container
+registries, so log in to the one you want to run against before starting:
 
 ```bash
 az login
 az acr login --name roboticsstagingacr          # for the released :latest images
 az acr login --name roboticsdevacr              # for the :dev images from main
 ```
+
+Alternatively, point the tests at the same images on `ghcr.io`, which are public and need no
+login at all — see the override example below.
 
 You may now run the tests with
 
@@ -187,6 +210,10 @@ GIT_REPOSITORY_FOR_MIGRATIONS_REF=dev \
 SARA_GIT_REPOSITORY_FOR_MIGRATIONS_REF=dev \
 uv run pytest -s -n auto robotics_integration_tests
 ```
+
+The same images are published to `ghcr.io`, where they are public, so `export
+REGISTRY=ghcr.io/equinor` runs either lane without `az acr login`. Note the missing
+`robotics/` path segment: `ghcr.io` has no nested repositories.
 
 ### Running against locally built images
 

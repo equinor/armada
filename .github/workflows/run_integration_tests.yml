@@ -8,6 +8,16 @@ on:
         required: true
         type: string
         default: "latest"
+
+      use_ghcr:
+        description: >
+          Pull the service images from ghcr.io/equinor instead of the robotics
+          ACR. The lane still selects the tag. Authenticates with the built-in
+          GITHUB_TOKEN, so none of the registry secrets below are needed; the
+          caller must grant `packages: read`.
+        required: false
+        type: boolean
+        default: false
     secrets:
         INTEGRATION_TEST_AZURE_CLIENT_SECRET:
           required: true
@@ -19,26 +29,26 @@ on:
         dev_registry_username:
           required: false
           description: |
-            Username for roboticsdevacr.azurecr.io. Required for the dev lane;
-            pass ROBOTICS_ROBOTICSDEVACR_USERNAME.
+            Username for roboticsdevacr.azurecr.io. Required for the dev lane
+            unless use_ghcr is set; pass ROBOTICS_ROBOTICSDEVACR_USERNAME.
 
         dev_registry_password:
           required: false
           description: |
-            Password for roboticsdevacr.azurecr.io. Required for the dev lane;
-            pass ROBOTICS_ROBOTICSDEVACR_PASSWORD.
+            Password for roboticsdevacr.azurecr.io. Required for the dev lane
+            unless use_ghcr is set; pass ROBOTICS_ROBOTICSDEVACR_PASSWORD.
 
         staging_registry_username:
           required: false
           description: |
-            Username for roboticsstagingacr.azurecr.io. Required for the latest lane;
-            pass ROBOTICS_ROBOTICSSTAGINGACR_USERNAME.
+            Username for roboticsstagingacr.azurecr.io. Required for the latest
+            lane unless use_ghcr is set; pass ROBOTICS_ROBOTICSSTAGINGACR_USERNAME.
 
         staging_registry_password:
           required: false
           description: |
-            Password for roboticsstagingacr.azurecr.io. Required for the latest lane;
-            pass ROBOTICS_ROBOTICSSTAGINGACR_PASSWORD.
+            Password for roboticsstagingacr.azurecr.io. Required for the latest
+            lane unless use_ghcr is set; pass ROBOTICS_ROBOTICSSTAGINGACR_PASSWORD.
 
   workflow_dispatch:
     inputs:
@@ -47,9 +57,17 @@ on:
         required: true
         type: string
         default: "latest"
+      use_ghcr:
+        description: "Pull the service images from ghcr.io/equinor instead of the robotics ACR"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  # Only used when use_ghcr is set; pulling from ghcr.io authenticates with the
+  # built-in GITHUB_TOKEN rather than a stored registry credential.
+  packages: read
 
 env:
   # Only MQTT credentials are still read from the key vault; service-to-service
@@ -58,12 +76,16 @@ env:
   AZURE_TENANT_ID: 3aa4a235-b6e2-48d5-9195-7fcf05b459b0
   AZURE_CLIENT_ID: 17d7c036-e4ff-4df6-87fd-0d648a36a727
 
-  # The service images are no longer published to ghcr.io. Each lane pulls from
-  # the registry its own deploy workflow pushes to: a push to main lands in the
-  # dev registry as :dev, a release lands in the staging registry as :latest.
-  # These are repository paths within that registry, not complete image refs.
+  # The lane selects the tag: a push to main lands as :dev, a release lands as
+  # :latest. Which registry that tag is read from is selected by use_ghcr.
+  #
+  # The services publish to the robotics ACRs and, since equinor/armada#101, to
+  # ghcr.io in the same build. Both carry the same tags, but the paths differ:
+  # ghcr.io has no nested repositories, so the robotics/ prefix is dropped there.
+  # These are repository paths within a registry, not complete image refs.
   DEV_REGISTRY: roboticsdevacr.azurecr.io
   STAGING_REGISTRY: roboticsstagingacr.azurecr.io
+  GHCR_REGISTRY: ghcr.io/equinor
   FLOTILLA_BACKEND_REPOSITORY: robotics/flotilla-backend
   FLOTILLA_BROKER_REPOSITORY: robotics/flotilla-broker
   ISAR_ROBOT_REPOSITORY: robotics/isar-robot
@@ -123,28 +145,54 @@ jobs:
         id: images
         run: |
           TAG="${{ inputs.lane }}"
-          if [ "$TAG" = "dev" ]; then
+          if [ "${{ inputs.use_ghcr }}" = "true" ]; then
+            # ghcr.io has no nested repositories, so the robotics/ prefix that
+            # namespaces the images inside the ACRs is stripped here.
+            REGISTRY="${{ env.GHCR_REGISTRY }}"
+            PREFIX=""
+          elif [ "$TAG" = "dev" ]; then
             REGISTRY="${{ env.DEV_REGISTRY }}"
+            PREFIX="robotics/"
           else
             REGISTRY="${{ env.STAGING_REGISTRY }}"
+            PREFIX="robotics/"
           fi
+
+          # Take the trailing segment of each repository path and re-apply the
+          # prefix the selected registry uses, so the paths stay derived from a
+          # single set of env vars rather than duplicated per registry.
+          image_ref() {
+            echo "${REGISTRY}/${PREFIX}${1##*/}:${TAG}"
+          }
+
           {
-            echo "registry=${REGISTRY}"
-            echo "flotilla_backend=${REGISTRY}/${{ env.FLOTILLA_BACKEND_REPOSITORY }}:${TAG}"
-            echo "flotilla_broker=${REGISTRY}/${{ env.FLOTILLA_BROKER_REPOSITORY }}:${TAG}"
-            echo "isar_robot=${REGISTRY}/${{ env.ISAR_ROBOT_REPOSITORY }}:${TAG}"
-            echo "sara=${REGISTRY}/${{ env.SARA_REPOSITORY }}:${TAG}"
+            echo "registry=${REGISTRY%%/*}"
+            echo "flotilla_backend=$(image_ref '${{ env.FLOTILLA_BACKEND_REPOSITORY }}')"
+            echo "flotilla_broker=$(image_ref '${{ env.FLOTILLA_BROKER_REPOSITORY }}')"
+            echo "isar_robot=$(image_ref '${{ env.ISAR_ROBOT_REPOSITORY }}')"
+            echo "sara=$(image_ref '${{ env.SARA_REPOSITORY }}')"
             echo "postgres=${{ env.POSTGRESQL_IMAGE }}"
             echo "azurite=${{ env.AZURITE_IMAGE }}"
             echo "git_ref=${TAG}"
           } >> $GITHUB_OUTPUT
 
       - name: Log in to the robotics container registry
+        if: ${{ !inputs.use_ghcr }}
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 #v4
         with:
           registry: ${{ steps.images.outputs.registry }}
           username: ${{ inputs.lane == 'dev' && secrets.dev_registry_username || secrets.staging_registry_username }}
           password: ${{ inputs.lane == 'dev' && secrets.dev_registry_password || secrets.staging_registry_password }}
+
+      # The packages are public, so this is not strictly required to pull them.
+      # It is done anyway to lift the anonymous pull rate limit.
+      - name: Log in to ghcr.io
+        if: ${{ inputs.use_ghcr }}
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 #v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b #v8.1.0
