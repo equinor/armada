@@ -5,7 +5,7 @@
 #
 # Why this exists
 # ---------------
-# The integration tests normally pull roboticsstagingacr.azurecr.io/robotics/
+# The integration tests normally pull ghcr.io/equinor/
 # {flotilla-backend,sara,isar-robot}. That means a change which spans armada *and* one of the services
 # cannot be validated until the service change has been merged and an image
 # published -- but the armada side of the change is what proves the service side

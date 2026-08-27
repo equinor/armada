@@ -42,12 +42,11 @@ class Settings(BaseSettings):
     ASPNETCORE_ENVIRONMENT: str = Field(default="IntegrationTest")
     FLOTILLA_BACKEND_NAME: str = Field(default="flotilla_backend")
     FLOTILLA_BACKEND_ALIAS: str = Field(default="flotilla_backend")
-    # The service images live in the private robotics ACRs, not ghcr.io. The
-    # staging registry holds the released :latest images, roboticsdevacr.azurecr.io
-    # holds :dev from the last push to main. Both need `az acr login -n <registry>`
-    # before a local run.
+    # The service images are published to ghcr.io as public packages. :latest is
+    # the newest release, :dev the last push to main. Being public, a local run
+    # needs no registry login at all.
     FLOTILLA_BACKEND_IMAGE: str = Field(
-        default="roboticsstagingacr.azurecr.io/robotics/flotilla-backend:latest"
+        default="ghcr.io/equinor/flotilla-backend:latest"
     )
     FLOTILLA_BACKEND_PORT: int = Field(default=8000)
 
@@ -57,7 +56,7 @@ class Settings(BaseSettings):
     FLOTILLA_BROKER_NAME: str = Field(default="flotilla_broker")
     FLOTILLA_BROKER_ALIAS: str = Field(default="broker")
     FLOTILLA_BROKER_IMAGE: str = Field(
-        default="roboticsstagingacr.azurecr.io/robotics/flotilla-broker:latest"
+        default="ghcr.io/equinor/flotilla-broker:latest"
     )
     FLOTILLA_BROKER_PORT: int = Field(default=1883)
 
@@ -103,7 +102,7 @@ class Settings(BaseSettings):
     ISAR_ROBOT_NAME: str = Field(default="Placebot")
     ISAR_ROBOT_ALIAS: str = Field(default="isar_robot")
     ISAR_ROBOT_IMAGE: str = Field(
-        default="roboticsstagingacr.azurecr.io/robotics/isar-robot:latest"
+        default="ghcr.io/equinor/isar-robot:latest"
     )
     ISAR_ROBOT_PORT: int = Field(default=3000)
 
@@ -112,7 +111,7 @@ class Settings(BaseSettings):
     SARA_ANON_STORAGE_CONTAINER: str = Field(default="sara-anon")
     SARA_VIS_STORAGE_CONTAINER: str = Field(default="sara-vis")
     SARA_IMAGE: str = Field(
-        default="roboticsstagingacr.azurecr.io/robotics/sara:latest"
+        default="ghcr.io/equinor/sara:latest"
     )
     SARA_NAME: str = Field(default="sara")
     SARA_PORT: int = Field(default=8100)

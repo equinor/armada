@@ -100,10 +100,6 @@ jobs:
 
     secrets:
       INTEGRATION_TEST_AZURE_CLIENT_SECRET: ${{ secrets.INTEGRATION_TEST_AZURE_CLIENT_SECRET }}
-      dev_registry_username: ${{ secrets.ROBOTICS_ROBOTICSDEVACR_USERNAME }}
-      dev_registry_password: ${{ secrets.ROBOTICS_ROBOTICSDEVACR_PASSWORD }}
-      staging_registry_username: ${{ secrets.ROBOTICS_ROBOTICSSTAGINGACR_USERNAME }}
-      staging_registry_password: ${{ secrets.ROBOTICS_ROBOTICSSTAGINGACR_PASSWORD }}
 ```
 
 This snippet will enable you to run the integration tests manually, and automatically once the
@@ -111,10 +107,6 @@ deploy workflow that publishes the images has finished. It requires the followin
 
 ```
 INTEGRATION_TEST_AZURE_CLIENT_SECRET
-ROBOTICS_ROBOTICSDEVACR_USERNAME
-ROBOTICS_ROBOTICSDEVACR_PASSWORD
-ROBOTICS_ROBOTICSSTAGINGACR_USERNAME
-ROBOTICS_ROBOTICSSTAGINGACR_PASSWORD
 ```
 
 `INTEGRATION_TEST_AZURE_CLIENT_SECRET` only grants read access to the MQTT credentials in the
@@ -123,11 +115,10 @@ The four `ROBOTICS_*ACR_*` secrets are the same ones the deploy workflows alread
 and are what lets the tests pull the service images. Only the pair matching the lane is used,
 but pass both so either lane can run.
 
-The input `lane` determines both the registry and the image tag used for the internally developed
-packages like Flotilla and ISAR. `lane=dev` pulls `roboticsdevacr.azurecr.io/robotics/<image>:dev`,
-the newest development images corresponding to the newest push to main; `lane=latest` pulls
-`roboticsstagingacr.azurecr.io/robotics/<image>:latest`, the newest release. The images are no
-longer published to ghcr.io.
+The input `lane` determines the image tag used for the internally developed packages like
+Flotilla and ISAR. `lane=dev` pulls `ghcr.io/equinor/<image>:dev`, the newest development images
+corresponding to the newest push to main; `lane=latest` pulls `ghcr.io/equinor/<image>:latest`,
+the newest release. These packages are public, so no registry credential is needed.
 
 Both lanes read a mutable tag, so the tests must not start until the deploy workflow that
 writes that tag has finished. Triggering on `push`/`release` directly makes the two run in
@@ -178,7 +169,7 @@ uv run pytest -s .
 To run the dev lane, the same combination CI uses for a push to `main`:
 
 ```bash
-export REGISTRY=roboticsdevacr.azurecr.io/robotics
+export REGISTRY=ghcr.io/equinor
 FLOTILLA_BACKEND_IMAGE=$REGISTRY/flotilla-backend:dev \
 FLOTILLA_BROKER_IMAGE=$REGISTRY/flotilla-broker:dev \
 ISAR_ROBOT_IMAGE=$REGISTRY/isar-robot:dev \
@@ -190,7 +181,7 @@ uv run pytest -s -n auto robotics_integration_tests
 
 ### Running against locally built images
 
-By default the tests pull `roboticsstagingacr.azurecr.io/robotics/{flotilla-backend,sara,isar-robot}`. A change that
+By default the tests pull `ghcr.io/equinor/{flotilla-backend,sara,isar-robot}`. A change that
 spans armada *and* one of those services therefore cannot be verified until the service change
 is merged and an image published — even though the armada side is what proves the service side
 works.
