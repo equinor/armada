@@ -67,6 +67,12 @@ on:
         type: string
         default: ""
 
+      environment:
+        description: "GitHub Environment for the publish job. Required with use_oidc — the OIDC subject is bound to it."
+        required: false
+        type: string
+        default: ""
+
     secrets:
       registry_username:
         required: true
@@ -99,6 +105,9 @@ jobs:
       runs_on: ${{ inputs.runs_on }}
       push_to_ghcr: ${{ inputs.push_to_ghcr }}
       use_oidc: ${{ inputs.use_oidc }}
+      # Scopes `vars` lookups in the publish job and, on the OIDC path, is what
+      # the token's subject claim carries. Empty for callers that omit it.
+      environment: ${{ inputs.environment }}
       azure_subscription_id: ${{ inputs.azure_subscription_id }}
     secrets:
       registry_username: ${{ secrets.registry_username }}
