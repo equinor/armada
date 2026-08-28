@@ -1,0 +1,151 @@
+name: Copy image between registries
+
+# Copies an already-built image from one registry to another with
+# `docker buildx imagetools create`, which transfers the manifest without
+# pulling or rebuilding layers.
+#
+# Extracted because five workflows carried the same three steps — two registry
+# logins and one `imagetools create` — differing only in the image name:
+# armada's own `promote_to_production.yml`, plus local promotion workflows in
+# flotilla, sara, isar-anymal and isar-taurob. Those four cannot simply call
+# `promote_to_production.yml`: it owns a three-job graph and assumes a single
+# image, while they run matrices over several images and, for flotilla and
+# sara, a database migration that must complete once before any copy. They
+# already delegate their deploy step to `update_kubernetes_deployment.yml`, so
+# this follows the same shape — local orchestration, shared steps.
+#
+# Authentication has two paths. `use_oidc` exchanges a GitHub OIDC token for a
+# managed identity that must hold AcrPull on the source and AcrPush on the
+# destination, since a copy reads from one and writes to the other. Otherwise
+# a username/password per registry is used.
+
+on:
+  workflow_call:
+    inputs:
+      source_registry:
+        description: "Registry to copy from, e.g. roboticsstagingacr.azurecr.io"
+        required: true
+        type: string
+
+      destination_registry:
+        description: "Registry to copy to, e.g. roboticsprodacr.azurecr.io"
+        required: true
+        type: string
+
+      image_name:
+        description: "Repository path within both registries, e.g. robotics/sara"
+        required: true
+        type: string
+
+      tag:
+        description: "Tag to copy. Must already exist in the source registry."
+        required: true
+        type: string
+
+      also_tag_latest:
+        description: "Additionally tag the copy as `latest` in the destination."
+        required: false
+        type: boolean
+        default: true
+
+      use_oidc:
+        description: >
+          Authenticate to both registries with a GitHub OIDC token instead of
+          username/passwords. Requires `environment`, and the calling job must
+          grant `id-token: write`.
+        required: false
+        type: boolean
+        default: false
+
+      environment:
+        description: >
+          GitHub Environment this job runs in. Scopes `vars` lookups and is what
+          the OIDC subject claim carries. Only needed with use_oidc.
+        required: false
+        type: string
+        default: ""
+
+      azure_subscription_id:
+        description: "Subscription holding both registries. Only needed with use_oidc."
+        required: false
+        type: string
+        default: ""
+
+      runs_on:
+        description: "Runner to execute the job on."
+        required: false
+        type: string
+        default: "ubuntu-latest"
+
+    secrets:
+      source_registry_username:
+        required: false
+      source_registry_password:
+        required: false
+      destination_registry_username:
+        required: false
+      destination_registry_password:
+        required: false
+
+jobs:
+  copy:
+    name: Copy ${{ inputs.image_name }}:${{ inputs.tag }}
+    runs-on: ${{ inputs.runs_on }}
+    # Empty unless use_oidc is set, which GitHub treats as "no environment".
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      # Only consumed on the OIDC path, but permissions cannot be conditional.
+      # Callers must grant it too - a called workflow's token can never exceed
+      # the calling job's.
+      id-token: write
+
+    steps:
+      - name: Log in to the source registry
+        if: ${{ !inputs.use_oidc }}
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 #v4
+        with:
+          registry: ${{ inputs.source_registry }}
+          username: ${{ secrets.source_registry_username }}
+          password: ${{ secrets.source_registry_password }}
+
+      - name: Log in to the destination registry
+        if: ${{ !inputs.use_oidc }}
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 #v4
+        with:
+          registry: ${{ inputs.destination_registry }}
+          username: ${{ secrets.destination_registry_username }}
+          password: ${{ secrets.destination_registry_password }}
+
+      - name: Azure login (OIDC / federated credential)
+        if: ${{ inputs.use_oidc }}
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 #v2.3.0
+        with:
+          client-id: ${{ vars.ACR_PUSH_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ inputs.azure_subscription_id }}
+
+      # Two logins, one identity: the copy reads from the source and writes to
+      # the destination, so the identity needs AcrPull on the former and
+      # AcrPush on the latter.
+      - name: Log in to both registries with the federated token
+        if: ${{ inputs.use_oidc }}
+        run: |
+          az acr login --name "${SOURCE_REGISTRY%%.*}"
+          az acr login --name "${DESTINATION_REGISTRY%%.*}"
+        env:
+          SOURCE_REGISTRY: ${{ inputs.source_registry }}
+          DESTINATION_REGISTRY: ${{ inputs.destination_registry }}
+
+      - name: Copy image
+        env:
+          SOURCE: ${{ inputs.source_registry }}/${{ inputs.image_name }}
+          DESTINATION: ${{ inputs.destination_registry }}/${{ inputs.image_name }}
+          TAG: ${{ inputs.tag }}
+          ALSO_LATEST: ${{ inputs.also_tag_latest }}
+        run: |
+          TAGS=(--tag "${DESTINATION}:${TAG}")
+          if [ "${ALSO_LATEST}" = "true" ]; then
+            TAGS+=(--tag "${DESTINATION}:latest")
+          fi
+          docker buildx imagetools create "${TAGS[@]}" "${SOURCE}:${TAG}"
