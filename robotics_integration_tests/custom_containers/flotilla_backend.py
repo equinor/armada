@@ -59,6 +59,8 @@ def create_flotilla_backend_container(
         .with_env("Redis__UseRedis", "false")
         .with_env("Database__PostgreSqlConnectionString", database_connection_string)
         .with_env("TeamsNotification__WebhookUrl", teams_notification_webhook_url)
+        .with_env("TeamsNotification__Destinations__SystemAlerts__WebhookUrl", teams_notification_webhook_url)
+        .with_env("TeamsNotification__Destinations__Feedback__WebhookUrl", teams_notification_webhook_url)
     )
 
     return container
