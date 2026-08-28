@@ -26,6 +26,32 @@ on:
       author_name:
         required: true
         type: string
+      use_oidc:
+        description: >
+          Authenticate to both registries with a GitHub OIDC token exchanged for
+          the robotics production push identity, instead of registry
+          username/passwords. That identity needs AcrPull on the staging
+          registry and AcrPush on the production one, because the copy reads
+          from staging and writes to production. Requires `environment`, and
+          the calling job must grant `id-token: write`.
+        required: false
+        type: boolean
+        default: false
+
+      environment:
+        description: >
+          GitHub Environment the copy job runs in. Scopes `vars` lookups and is
+          what the OIDC subject claim carries. Only needed with use_oidc.
+        required: false
+        type: string
+        default: ""
+
+      azure_subscription_id:
+        description: "Subscription holding both registries. Only needed with use_oidc."
+        required: false
+        type: string
+        default: ""
+
       runs_on:
         description: "Runner label for the image-copy job (e.g. 'ubuntu-latest' or a self-hosted runner label). The deployment update job always uses ubuntu-latest."
         required: false
@@ -38,19 +64,21 @@ on:
         default: "k8s_kustomize/overlays"
     secrets:
       staging_registry_username:
-        required: true
+        required: false
       staging_registry_password:
-        required: true
+        required: false
       production_registry_username:
-        required: true
+        required: false
       production_registry_password:
-        required: true
+        required: false
       deploy_key:
         required: true
 
 permissions:
   contents: read
   packages: write
+  # Required so the copy job can mint an OIDC token on the use_oidc path.
+  id-token: write
 
 jobs:
   get-staging-version:
@@ -87,8 +115,17 @@ jobs:
     name: Copy staging image to production registry
     needs: get-staging-version
     runs-on: ${{ inputs.runs_on }}
+    # Empty unless use_oidc is set, which GitHub treats as "no environment".
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      # Only consumed on the OIDC path, but permissions cannot be conditional.
+      # Callers must grant it too - a called workflow's token can never exceed
+      # the calling job's.
+      id-token: write
     steps:
       - name: Log in to staging registry
+        if: ${{ !inputs.use_oidc }}
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 #v4
         with:
           registry: ${{ inputs.staging_registry }}
@@ -96,11 +133,32 @@ jobs:
           password: ${{ secrets.staging_registry_password }}
 
       - name: Log in to production registry
+        if: ${{ !inputs.use_oidc }}
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 #v4
         with:
           registry: ${{ inputs.production_registry }}
           username: ${{ secrets.production_registry_username }}
           password: ${{ secrets.production_registry_password }}
+
+      - name: Azure login (OIDC / federated credential)
+        if: ${{ inputs.use_oidc }}
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 #v2.3.0
+        with:
+          client-id: ${{ vars.ACR_PUSH_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ inputs.azure_subscription_id }}
+
+      # Two logins, one identity: the copy reads from staging and writes to
+      # production, so the identity holds AcrPull on the former and AcrPush
+      # on the latter.
+      - name: Log in to both registries with the federated token
+        if: ${{ inputs.use_oidc }}
+        run: |
+          az acr login --name "${STAGING_REGISTRY%%.*}"
+          az acr login --name "${PRODUCTION_REGISTRY%%.*}"
+        env:
+          STAGING_REGISTRY: ${{ inputs.staging_registry }}
+          PRODUCTION_REGISTRY: ${{ inputs.production_registry }}
 
       - name: Copy image (tag + latest) from staging to production
         env:
