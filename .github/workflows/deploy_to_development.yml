@@ -109,6 +109,9 @@ jobs:
       runs_on: ${{ inputs.runs_on }}
       push_to_ghcr: ${{ inputs.push_to_ghcr }}
       use_oidc: ${{ inputs.use_oidc }}
+      # Scopes `vars` lookups in the publish job and, on the OIDC path, is what
+      # the token's subject claim carries. Empty for callers that omit it.
+      environment: ${{ inputs.environment_name }}
       azure_subscription_id: ${{ inputs.azure_subscription_id }}
     secrets:
       registry_username: ${{ secrets.registry_username }}
