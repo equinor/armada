@@ -26,6 +26,30 @@ on:
       author_name:
         required: true
         type: string
+      use_oidc:
+        description: >
+          Authenticate to both registries with a GitHub OIDC token instead of
+          registry username/passwords. The identity needs AcrPull on the staging
+          registry and AcrPush on the production one. Requires `environment`,
+          and the calling job must grant `id-token: write`.
+        required: false
+        type: boolean
+        default: false
+
+      environment:
+        description: >
+          GitHub Environment the copy runs in. Scopes `vars` lookups and is what
+          the OIDC subject claim carries. Only needed with use_oidc.
+        required: false
+        type: string
+        default: ""
+
+      azure_subscription_id:
+        description: "Subscription holding both registries. Only needed with use_oidc."
+        required: false
+        type: string
+        default: ""
+
       runs_on:
         description: "Runner label for the image-copy job (e.g. 'ubuntu-latest' or a self-hosted runner label). The deployment update job always uses ubuntu-latest."
         required: false
@@ -38,19 +62,21 @@ on:
         default: "k8s_kustomize/overlays"
     secrets:
       staging_registry_username:
-        required: true
+        required: false
       staging_registry_password:
-        required: true
+        required: false
       production_registry_username:
-        required: true
+        required: false
       production_registry_password:
-        required: true
+        required: false
       deploy_key:
         required: true
 
 permissions:
   contents: read
   packages: write
+  # Required so the copy can mint an OIDC token on the use_oidc path.
+  id-token: write
 
 jobs:
   get-staging-version:
@@ -86,30 +112,24 @@ jobs:
   copy-image-to-production:
     name: Copy staging image to production registry
     needs: get-staging-version
-    runs-on: ${{ inputs.runs_on }}
-    steps:
-      - name: Log in to staging registry
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 #v4
-        with:
-          registry: ${{ inputs.staging_registry }}
-          username: ${{ secrets.staging_registry_username }}
-          password: ${{ secrets.staging_registry_password }}
-
-      - name: Log in to production registry
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 #v4
-        with:
-          registry: ${{ inputs.production_registry }}
-          username: ${{ secrets.production_registry_username }}
-          password: ${{ secrets.production_registry_password }}
-
-      - name: Copy image (tag + latest) from staging to production
-        env:
-          TAG: ${{ needs.get-staging-version.outputs.version_tag }}
-        run: |
-          docker buildx imagetools create \
-            --tag ${{ inputs.production_registry }}/${{ inputs.image_name }}:${TAG} \
-            --tag ${{ inputs.production_registry }}/${{ inputs.image_name }}:latest \
-            ${{ inputs.staging_registry }}/${{ inputs.image_name }}:${TAG}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/copy_image_between_registries.yml
+    with:
+      source_registry: ${{ inputs.staging_registry }}
+      destination_registry: ${{ inputs.production_registry }}
+      image_name: ${{ inputs.image_name }}
+      tag: ${{ needs.get-staging-version.outputs.version_tag }}
+      use_oidc: ${{ inputs.use_oidc }}
+      environment: ${{ inputs.environment }}
+      azure_subscription_id: ${{ inputs.azure_subscription_id }}
+      runs_on: ${{ inputs.runs_on }}
+    secrets:
+      source_registry_username: ${{ secrets.staging_registry_username }}
+      source_registry_password: ${{ secrets.staging_registry_password }}
+      destination_registry_username: ${{ secrets.production_registry_username }}
+      destination_registry_password: ${{ secrets.production_registry_password }}
 
   deploy:
     name: Update deployment in production
