@@ -138,4 +138,8 @@ jobs:
           ISAR_MQTT_PASSWORD: ${{ env.ISAR_MQTT_PASSWORD }}
           SARA_MQTT_PASSWORD: ${{ env.SARA_MQTT_PASSWORD }}
 
+          # The migrations runner clones flotilla and sara to build the schema.
+          # Anonymous clones are throttled per IP, which hosted runners share.
+          GITHUB_TOKEN: ${{ github.token }}
+
         run: uv run --frozen pytest -s -n auto robotics_integration_tests

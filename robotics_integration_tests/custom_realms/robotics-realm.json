@@ -29,6 +29,10 @@
       {
         "name": "Mission.Control",
         "description": "ISAR REQUIRED_ROLE (isar settings.py REQUIRED_ROLE)"
+      },
+      {
+        "name": "WorkflowStatus.Write",
+        "description": "Allows updating SARA workflow status via the Argo callbacks"
       }
     ]
   },
@@ -310,7 +314,8 @@
         "Role.User.HUA",
         "Role.User.KAA",
         "Role.User.NLS",
-        "Mission.Control"
+        "Mission.Control",
+        "WorkflowStatus.Write"
       ]
     },
     {

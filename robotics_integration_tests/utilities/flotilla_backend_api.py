@@ -21,6 +21,20 @@ DUMMY_MISSION_ANALYSIS_TYPE = "Fencilla"
 # Number of tasks in the dummy mission that request an analysis.
 DUMMY_MISSION_TASKS_REQUESTING_ANALYSIS = 2
 
+# The SARA analysis key each Flotilla AnalysisType maps to, and the workflow
+# chain SARA runs for it. Mirrors IsarMissionDefinition.ToSaraAnalysisKeys in
+# flotilla and Analysis:Analyses in sara's appsettings.json.
+SARA_ANALYSIS_KEY_BY_FLOTILLA_TYPE: Dict[str, str] = {
+    "Fencilla": "fencilla",
+    "CLOE": "cloe",
+    "ThermalReading": "thermal-reading",
+}
+SARA_WORKFLOW_CHAINS: Dict[str, List[str]] = {
+    "fencilla": ["anonymizer", "rain-drop", "fencilla"],
+    "cloe": ["anonymizer", "rain-drop", "cloe"],
+    "thermal-reading": ["anonymizer", "thermal-reading"],
+}
+
 
 def _add_headers() -> Dict[str, str]:
     access_token: str = retrieve_access_token_for_integration_tests_app(
@@ -61,11 +75,15 @@ def set_current_inspection_area_for_robot(
 
 def get_dummy_mission_payload_with_installation(
     installation_code: str,
+    analysis_type: str = DUMMY_MISSION_ANALYSIS_TYPE,
 ) -> Dict:
     """Three image tasks, two of which request an analysis.
 
     The third task deliberately requests no analysis: SARA runs only the
     analyses a mission asks for, so that task must not produce an Analysis.
+
+    ``analysis_type`` selects which SARA workflow chain the two analysed tasks
+    run; see SARA_ANALYSIS_KEY_BY_FLOTILLA_TYPE.
     """
     return {
         "tasks": [
@@ -77,7 +95,7 @@ def get_dummy_mission_payload_with_installation(
                     "orientation": {"x": 0, "y": 1, "z": 0, "w": 1.5707964},
                 },
                 "targetPosition": {"x": 112.252, "y": 284.027, "z": 29.779},
-                "analysisTypes": [DUMMY_MISSION_ANALYSIS_TYPE],
+                "analysisTypes": [analysis_type],
                 "sensorType": "Image",
             },
             {
@@ -88,7 +106,7 @@ def get_dummy_mission_payload_with_installation(
                     "orientation": {"x": 0, "y": 1, "z": 0, "w": 3.1415927},
                 },
                 "targetPosition": {"x": 295.62, "y": 95.589, "z": 29.767},
-                "analysisTypes": [DUMMY_MISSION_ANALYSIS_TYPE],
+                "analysisTypes": [analysis_type],
                 "sensorType": "Image",
             },
             {
