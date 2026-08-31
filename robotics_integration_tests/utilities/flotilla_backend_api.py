@@ -64,6 +64,46 @@ def get_inspection_area_id_for_installation(backend_url: str, installation_code:
     return inspection_area_id
 
 
+def get_inspection_areas_for_installation(
+    backend_url: str, installation_code: str
+) -> List[Dict]:
+    response: Response = requests.get(
+        f"{backend_url}/inspectionAreas/installation/{installation_code}",
+        headers=_add_headers(),
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+# The default polygon spans the whole positive quadrant, so this one is placed
+# in the negative quadrant to be disjoint from it. A mission whose task poses
+# fall in here is inferred to belong to this area, not the robot's.
+far_area_polygon: Dict = {
+    "zmin": 0,
+    "zmax": 10000000,
+    "positions": [
+        {"x": -10000000, "y": -10000000},
+        {"x": -10000000, "y": -1},
+        {"x": -1, "y": -10000000},
+        {"x": -1, "y": -1},
+    ],
+}
+
+
+def get_dummy_mission_payload_in_far_area(installation_code: str) -> Dict:
+    """A mission whose tasks lie in far_area_polygon rather than the default one.
+
+    Flotilla infers a mission definition's inspection area from its task poses,
+    so this is how a mission is placed in an area the robot is not in.
+    """
+    payload: Dict = get_dummy_mission_payload_with_installation(installation_code)
+    for task in payload["tasks"]:
+        task["robotPose"]["position"]["x"] = -abs(task["robotPose"]["position"]["x"])
+        task["robotPose"]["position"]["y"] = -abs(task["robotPose"]["position"]["y"])
+    payload["name"] = "Three valves in a different inspection area"
+    return payload
+
+
 def set_current_inspection_area_for_robot(
     backend_url: str, inspection_area_id: str, robot_id: str
 ):
@@ -200,6 +240,21 @@ def call_schedule_mission(backend_url: str, robot_id: str, mission_id: str) -> D
         )
     response.raise_for_status()
     return response.json()
+
+
+def try_schedule_mission(
+    backend_url: str, robot_id: str, mission_id: str
+) -> Response:
+    """Schedule a mission and return the raw response.
+
+    schedule_mission() raises on a non-2xx, which is right for the happy path
+    but useless when the rejection is the thing under test.
+    """
+    return requests.post(
+        f"{backend_url}/missions/schedule/{mission_id}",
+        json={"robotId": robot_id},
+        headers=_add_headers(),
+    )
 
 
 def get_robot_by_name(backend_url: str, name: str) -> Dict:

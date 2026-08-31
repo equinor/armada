@@ -85,6 +85,7 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
     populate_database_with_minimum_models,
     wait_for_database_to_be_populated,
 )
+from robotics_integration_tests.utilities.mqtt_recorder import MqttRecorder
 from robotics_integration_tests.utilities.sara_backend_api import (
     wait_for_sara_to_be_responsive,
 )
@@ -364,6 +365,26 @@ def flotilla_backend(
 
 
 @pytest.fixture
+def mqtt_recorder(flotilla_broker: FlotillaBroker):
+    """Records everything ISAR and SARA publish, for direct assertions.
+
+    Depends on the broker alone, so it starts recording before any service is
+    up and therefore cannot miss early messages such as ISAR's startup.
+    """
+    recorder = MqttRecorder(
+        host="localhost",
+        port=int(flotilla_broker.broker.get_exposed_port(settings.FLOTILLA_BROKER_PORT)),
+        username="flotilla",
+        password=settings.FLOTILLA_MQTT_PASSWORD,
+    )
+    recorder.start()
+    try:
+        yield recorder
+    finally:
+        recorder.stop()
+
+
+@pytest.fixture
 def argo_stub(
     network: Network,
     keycloak: Keycloak,
@@ -451,6 +472,7 @@ def armada_without_robots(
     armada_storage: ArmadaStorage,
     teams_webhook_receiver: TeamsWebhookReceiver,
     argo_stub: ArgoStub,
+    mqtt_recorder: MqttRecorder,
 ):
     armada: Armada = Armada()
 
@@ -465,6 +487,7 @@ def armada_without_robots(
     armada.flotilla_backend = flotilla_backend
     armada.teams_webhook_receiver = teams_webhook_receiver
     armada.argo_stub = argo_stub
+    armada.mqtt_recorder = mqtt_recorder
 
     yield armada
 
@@ -550,6 +573,53 @@ def armada_with_single_failing_robot(armada_without_robots: Armada):
         should_fail_normal_task=True,
         test_id=armada.test_id,
     ) as isar_robot:
+
+        robot_id, installation_code_for_robot = setup_robot_in_flotilla(
+            backend_url=armada.flotilla_backend.backend_url,
+            robot_name=settings.ISAR_ROBOT_NAME,
+        )
+
+        armada.robots[settings.ISAR_ROBOT_NAME] = IsarRobot(
+            container=isar_robot,
+            name=settings.ISAR_ROBOT_NAME,
+            robot_id=robot_id,
+            port=settings.ISAR_ROBOT_PORT,
+            alias=settings.ISAR_ROBOT_ALIAS,
+            installation_code=installation_code_for_robot,
+        )
+        _assert_robots_require_authentication(armada)
+        armada.log_startup_info()
+        yield armada
+
+
+@pytest.fixture
+def armada_with_return_home_failing_robot(armada_without_robots: Armada):
+    """A robot whose return-home mission always fails.
+
+    With a retry limit of 2, ISAR exhausts its retries quickly and moves to
+    InterventionNeeded, which is what publishes isar/<id>/intervention_needed
+    and in turn produces a Teams notification from Flotilla.
+    """
+    armada: Armada = armada_without_robots
+    blob_conn_data, blob_conn_metadata = _blob_connection_strings(armada)
+
+    with create_isar_robot_container(
+        network=armada.network,
+        openid_config_url=armada.keycloak.internal_openid_config_url,
+        image=settings.ISAR_ROBOT_IMAGE,
+        name=settings.ISAR_ROBOT_NAME,
+        port=settings.ISAR_ROBOT_PORT,
+        alias=settings.ISAR_ROBOT_ALIAS,
+        blob_storage_connection_string_data=blob_conn_data,
+        blob_storage_connection_string_metadata=blob_conn_metadata,
+        should_fail_return_home=True,
+        return_home_retry_limit=2,
+        should_start_at_home=True,
+        test_id=armada.test_id,
+    ) as isar_robot:
+        wait_for_port_mapping_to_be_available(
+            container=isar_robot, port=settings.ISAR_ROBOT_PORT
+        )
 
         robot_id, installation_code_for_robot = setup_robot_in_flotilla(
             backend_url=armada.flotilla_backend.backend_url,
