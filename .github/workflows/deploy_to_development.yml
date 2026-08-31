@@ -68,9 +68,11 @@ on:
 
     secrets:
       registry_username:
-        required: true
+        description: "Username for the container registry. Not needed when use_oidc is true."
+        required: false
       registry_password:
-        required: true
+        description: "Password for the container registry. Not needed when use_oidc is true."
+        required: false
       deploy_key:
         description: "SSH deploy key for the infrastructure repository."
         required: true
