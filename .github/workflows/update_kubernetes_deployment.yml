@@ -74,31 +74,64 @@ jobs:
           repository: ${{ inputs.infrastructure_repository }}
           ssh-key: ${{ secrets.deploy_key }}
 
-      - name: Update image tag in kustomization
+      - name: Update image tag and push
+        env:
+          KUSTOMIZATION_BASE_PATH: ${{ inputs.kustomization_base_path }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          REGISTRY: ${{ inputs.registry }}
+          IMAGE_NAME: ${{ inputs.image_name }}
+          IMAGE_TAG: ${{ inputs.tag }}
         run: |
-          KUSTOMIZATION_FILE="${{ inputs.kustomization_base_path }}/${{ inputs.environment }}/kustomization.yaml"
+          set -euo pipefail
 
-          GREP_RESULT=$(grep -n "newName: ${{ inputs.registry }}/${{ inputs.image_name }}$" "$KUSTOMIZATION_FILE" | cut -d ':' -f 1)
-          if [ -z "$GREP_RESULT" ]; then
-            echo "Error: Image ${{ inputs.registry }}/${{ inputs.image_name }} not found in $KUSTOMIZATION_FILE"
-            exit 1
-          fi
-
-          LINE_NUMBERS=($GREP_RESULT)
-          for line_number in "${LINE_NUMBERS[@]}"
-          do
-              TAG_LINE_NUMBER=$((line_number + 1))
-              sed -i "${TAG_LINE_NUMBER} s/newTag:.*/newTag: ${{ inputs.tag }}/" "$KUSTOMIZATION_FILE"
-          done
-
-      - name: Commit and push changes
-        run: |
           git config --global user.email "${EMAIL}"
           git config --global user.name  "GitHub Actions (${NAME})"
-          git add ${{ inputs.kustomization_base_path }}/${{ inputs.environment }}/kustomization.yaml
-          if ! git diff-index --quiet HEAD; then
-            git commit --message "GHA: Update ${SERVICE_NAME} in ${{ inputs.environment }} (${{ inputs.tag }})"
-            git push
-          else
-            echo "No changes to commit or push."
-          fi
+
+          KUSTOMIZATION_FILE="${KUSTOMIZATION_BASE_PATH}/${TARGET_ENVIRONMENT}/kustomization.yaml"
+
+          apply_edit() {
+            GREP_RESULT=$(grep -n "newName: ${REGISTRY}/${IMAGE_NAME}$" "$KUSTOMIZATION_FILE" | cut -d ':' -f 1)
+            if [ -z "$GREP_RESULT" ]; then
+              echo "Error: Image ${REGISTRY}/${IMAGE_NAME} not found in $KUSTOMIZATION_FILE"
+              return 1
+            fi
+            LINE_NUMBERS=($GREP_RESULT)
+            for line_number in "${LINE_NUMBERS[@]}"; do
+              TAG_LINE_NUMBER=$((line_number + 1))
+              sed -i "${TAG_LINE_NUMBER} s/newTag:.*/newTag: ${IMAGE_TAG}/" "$KUSTOMIZATION_FILE"
+            done
+          }
+
+          # Several services deploy at once and all push to the same
+          # infrastructure repository, so a plain push loses the race whenever
+          # two land together. Rather than rebasing — the services often edit
+          # the same kustomization file, so a rebase can conflict — each attempt
+          # discards local work, takes the latest main, and re-applies the edit.
+          # The edit is a targeted sed and therefore idempotent, so re-applying
+          # is always safe.
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main --quiet
+            git reset --hard origin/main --quiet
+
+            apply_edit
+
+            git add "$KUSTOMIZATION_FILE"
+            if git diff-index --quiet HEAD; then
+              echo "No changes to commit or push."
+              exit 0
+            fi
+
+            git commit --quiet --message \
+              "GHA: Update ${SERVICE_NAME} in ${TARGET_ENVIRONMENT} (${IMAGE_TAG})"
+
+            if git push --quiet; then
+              echo "Pushed on attempt ${attempt}."
+              exit 0
+            fi
+
+            echo "Push rejected on attempt ${attempt}; another service pushed first. Retrying."
+            sleep $(( (RANDOM % 5) + attempt ))
+          done
+
+          echo "Error: could not push after 5 attempts."
+          exit 1
