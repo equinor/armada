@@ -88,8 +88,18 @@ on:
         description: "Password for container registry. Unused when use_oidc is true."
         required: false
 
+      build_secrets:
+        description: >
+          BuildKit secrets for the build, as newline-separated `id=value` pairs,
+          passed verbatim to docker/build-push-action's `secrets:`. Use for any
+          Dockerfile that consumes `--mount=type=secret`.
+
+          Takes precedence over anymal_download_password, which predates this
+          and is the same mechanism with a hardcoded id. No caller needs both.
+        required: false
+
       anymal_download_password:
-        description: "Password to download software during build. Only required for isar-anymal."
+        description: "Password to download software during build. Only required for isar-anymal. Prefer build_secrets for anything new."
         required: false
 
       anymal_download_username:
@@ -189,7 +199,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          secrets: ${{ secrets.anymal_download_password != '' && format('ANYMAL_DOWNLOAD_PASSWORD_SECRET={0}', secrets.anymal_download_password) || '' }}
+          # build_secrets wins when set; otherwise fall back to the older
+          # anymal-specific secret. Deliberately exclusive rather than
+          # concatenated: an empty line in this list is not ignored, and no
+          # caller needs both.
+          secrets: ${{ secrets.build_secrets != '' && secrets.build_secrets || (secrets.anymal_download_password != '' && format('ANYMAL_DOWNLOAD_PASSWORD_SECRET={0}', secrets.anymal_download_password) || '') }}
           build-args: ${{ secrets.anymal_download_username != '' && format('ANYMAL_DOWNLOAD_USER_NAME={0}', secrets.anymal_download_username) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
