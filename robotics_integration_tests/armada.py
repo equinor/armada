@@ -5,6 +5,7 @@ from robotics_integration_tests.settings.settings import settings
 from testcontainers.core.network import Network
 from loguru import logger
 from robotics_integration_tests.custom_containers.azurite import ArmadaStorage
+from robotics_integration_tests.custom_containers.argo_stub import ArgoStub
 from robotics_integration_tests.custom_containers.flotilla_backend import (
     FlotillaBackend,
 )
@@ -32,6 +33,7 @@ class Armada:
         self.sara: Sara | None = None
         self.sara_database: SaraDatabase | None = None
         self.teams_webhook_receiver: TeamsWebhookReceiver | None = None
+        self.argo_stub: ArgoStub | None = None
         self.robots: Dict[str, IsarRobot] = {}
 
     def log_startup_info(self) -> None:

@@ -44,7 +44,17 @@ else
     BRANCH="main"
   fi
   rm -rf /work/repo
-  git clone --depth 1 --branch "$BRANCH" "https://github.com/$GIT_REPO" /work/repo
+  # GitHub throttles anonymous git clones per IP, and a test run clones twice.
+  # Iterating locally exhausts that quota quickly, after which GitHub answers
+  # with an auth challenge and the clone fails with a bare "could not read
+  # Username". Authenticate when a token is available; CI always has one.
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    git clone --depth 1 --branch "$BRANCH" \
+      -c http.https://github.com/.extraheader="Authorization: Basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')" \
+      "https://github.com/$GIT_REPO" /work/repo
+  else
+    git clone --depth 1 --branch "$BRANCH" "https://github.com/$GIT_REPO" /work/repo
+  fi
 fi
 
 cd /work/repo

@@ -45,6 +45,11 @@ class Keycloak:
         return f"{self.internal_url}/.well-known/openid-configuration"
 
     @property
+    def internal_token_url(self) -> str:
+        """Token endpoint as reached from another container on the network."""
+        return f"{self.internal_url}/protocol/openid-connect/token"
+
+    @property
     def host_url(self) -> str:
         port = self.container.get_exposed_port(self.port)
         return f"http://localhost:{port}/realms/{REALM}"

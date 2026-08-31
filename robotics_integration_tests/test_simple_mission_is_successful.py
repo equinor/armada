@@ -60,11 +60,12 @@ def test_simple_mission_with_three_tags_is_successful(
         expected_status="Home",
     )
 
-    # The fencilla chain starts with the anonymizer, and there is no Argo in
-    # the test environment, so SARA is expected to fail triggering it.
+    # The fencilla chain starts with the anonymizer. The Argo stub accepts the
+    # trigger and drives the workflow to completion, so the trigger must
+    # succeed; test_analysis_pipeline.py asserts on the chain itself.
     wait_for_sara_logs(
         container=armada.sara.container,
-        log_message="Failed to trigger workflow anonymizer",
+        log_message="Triggering workflow anonymizer",
     )
 
     # SARA runs only the analyses a mission explicitly asks for; there is no

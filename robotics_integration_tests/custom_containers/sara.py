@@ -28,6 +28,8 @@ def create_sara_container(
     keycloak: Keycloak,
     database_connection_string: str,
     raw_storage_connection_string: str,
+    blob_connection_strings_by_account: dict[str, str] | None = None,
+    argo_trigger_urls: dict[str, str] | None = None,
     image: str = "ghcr.io/equinor/sara:latest",
     name: str = "sara",
     port: int = 8100,
@@ -57,5 +59,19 @@ def create_sara_container(
             raw_storage_connection_string,
         )
     )
+
+    # One connection string per storage account the pipeline writes to. Without
+    # the anonymized and visualized accounts, every workflow after the first
+    # fails when SARA tries to resolve its output location.
+    for account, connection_string in (blob_connection_strings_by_account or {}).items():
+        container = container.with_env(
+            f"BlobStorage__{account}__ConnectionString", connection_string
+        )
+
+    # Point every analysis step at the fake Argo trigger service.
+    for workflow_type, trigger_url in (argo_trigger_urls or {}).items():
+        container = container.with_env(
+            f"Analysis__Workflows__{workflow_type}__TriggerUrl", trigger_url
+        )
 
     return container

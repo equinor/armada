@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List
 
 from dotenv import load_dotenv
 from pydantic import Field, computed_field
@@ -93,6 +93,10 @@ class Settings(BaseSettings):
     SARA_MIGRATIONS_SOURCE_DIR: str = Field(default="")
 
     # Migrations runner environment
+    # Optional. Used to resolve the "latest" release tag and to authenticate the
+    # clone: GitHub throttles anonymous clones per IP, and each test run clones
+    # twice, so local iteration exhausts the quota quickly without one.
+    GITHUB_TOKEN: str = Field(default="")
     RELATIVE_PATH_TO_DOCKERFILE: str = Field(
         default="./robotics_integration_tests/custom_images/migrations_runner/"
     )
@@ -110,6 +114,13 @@ class Settings(BaseSettings):
     SARA_RAW_STORAGE_CONTAINER: str = Field(default="sara-raw")
     SARA_ANON_STORAGE_CONTAINER: str = Field(default="sara-anon")
     SARA_VIS_STORAGE_CONTAINER: str = Field(default="sara-vis")
+
+    # Fake Argo Workflows trigger service. SARA's Analysis:Workflows:*:TriggerUrl
+    # are pointed at it so the analysis chain can run without Argo or the real
+    # analyzers. See custom_images/argo_stub/server.py.
+    ARGO_STUB_NAME: str = Field(default="argo_stub")
+    ARGO_STUB_ALIAS: str = Field(default="argo_stub")
+    ARGO_STUB_PORT: int = Field(default=8080)
     SARA_IMAGE: str = Field(
         default="ghcr.io/equinor/sara:latest"
     )
@@ -131,6 +142,22 @@ class Settings(BaseSettings):
         ]
 
     AZURITE_ACCOUNT: str = Field(default="saradevstorageraw")
+    # SARA resolves a storage account by name, via
+    # BlobStorage__{account}__ConnectionString, so each Azurite container serves
+    # the account name SARA expects for that stage of the pipeline. These must
+    # match Analysis:Workflows:*:OutputStorageAccount in sara's appsettings.json.
+    AZURITE_ANON_ACCOUNT: str = Field(default="saradevstoreanon")
+    AZURITE_VIS_ACCOUNT: str = Field(default="saradevstorevis")
+
+    @computed_field
+    @property
+    def AZURITE_ACCOUNT_BY_ALIAS(self) -> Dict[str, str]:
+        return {
+            self.SARA_RAW_STORAGE_CONTAINER: self.AZURITE_ACCOUNT,
+            self.SARA_ANON_STORAGE_CONTAINER: self.AZURITE_ANON_ACCOUNT,
+            self.SARA_VIS_STORAGE_CONTAINER: self.AZURITE_VIS_ACCOUNT,
+        }
+
     AZURITE_KEY: str = Field(
         default="Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="
     )  # This is a default Azurite key for a development container and not a secret
