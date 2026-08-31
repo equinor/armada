@@ -171,10 +171,9 @@ The deploy workflows in `equinor/armada` expect these **repository secrets** (or
 
 Required:
 
-- `ROBOTICS_ROBOTICSDEVACR_USERNAME` / `_PASSWORD` — dev registry
-- `ROBOTICS_ROBOTICSSTAGINGACR_USERNAME` / `_PASSWORD` — staging registry
-- `ROBOTICS_ROBOTICSPRODACR_USERNAME` / `_PASSWORD` — prod registry
 - `ROBOTICS_INFRASTRUCTURE_DEPLOY_KEY` — SSH deploy key on `equinor/robotics-infrastructure`
+
+Registry authentication is done via OIDC federated credentials (see §7), not username/password secrets. If your workflow still uses `use_oidc: false`, you also need `ROBOTICS_ROBOTICS{DEV,STAGING,PROD}ACR_USERNAME` / `_PASSWORD`.
 
 **Verify (names only, values never surface):**
 ```bash
@@ -187,18 +186,53 @@ gh api "/repos/$REPO/actions/secrets" --jq '.secrets[].name'
 
 Set only if the service needs environment-specific values that are safe to expose.
 
-- `AZURE_SUBSCRIPTION_ID` — required only if the workflow calls `run_dotnet_migrations.yml` (flotilla/sara pattern; not needed for typical Python services).
+- `AZURE_SUBSCRIPTION_ID` — required for OIDC registry auth (see §7) and for workflows that call `run_dotnet_migrations.yml`.
+- `AZURE_TENANT_ID` — required for OIDC registry auth.
 
 **Verify:**
 ```bash
 gh api "/repos/$REPO/actions/variables" --jq '.variables[].name'
 ```
 
-Empty is fine for most Python services.
+---
+
+## 7. OIDC registry authentication
+
+Service repos authenticate to the robotics ACR with a federated credential instead of a stored username/password. This requires GitHub-side configuration plus a matching federated credential on the Azure-side managed identity.
+
+### GitHub side
+
+**Repo-level variables** (see §6):
+- `AZURE_SUBSCRIPTION_ID`
+- `AZURE_TENANT_ID`
+
+**Environments** (see §4): `Development`, `Staging`, `Production` — all three are required, because the OIDC subject claim carries the environment name and the federated credential on the Azure side is bound to `repo:<org>/<repo>:environment:<name>`.
+
+**Per-environment variables:** each environment needs `ACR_PUSH_CLIENT_ID` set to the client ID of the managed identity that has AcrPush on the corresponding registry (dev / staging / prod).
+
+**Workflow input:** the caller sets `use_oidc: true`, `environment_name: <env>`, and `azure_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}`. See `sara-utilities` for a reference wrapper.
+
+### Azure side
+
+The managed identity referenced by each `ACR_PUSH_CLIENT_ID` must have a federated credential whose subject matches `repo:equinor/<repo>:environment:<env>`. Setting that up is out of scope for this checklist — coordinate with whoever owns the robotics ACR subscription.
+
+**Verify (GitHub side only):**
+```bash
+gh api "/repos/$REPO/actions/variables" --jq '.variables[].name'
+gh api "/repos/$REPO/environments" --jq '.environments[].name'
+for env in Development Staging Production; do
+  echo "$env:"
+  gh api "/repos/$REPO/environments/$env/variables" --jq '.variables[].name'
+done
+```
+
+Expected: repo vars include `AZURE_SUBSCRIPTION_ID` and `AZURE_TENANT_ID`; all three environments exist; each environment has `ACR_PUSH_CLIENT_ID`.
 
 ---
 
-## 7. Labels
+---
+
+## 8. Labels
 
 Standard label set is managed by `synchronize_labels.yml` (already in the template). Trigger it once after the repo is created:
 
@@ -215,7 +249,7 @@ Expected labels include `bug`, `enhancement`, `documentation`, `stale`, etc. —
 
 ---
 
-## 8. Dependabot
+## 9. Dependabot
 
 Ships with the template as `.github/dependabot.yml` if you want it — otherwise not enabled by default. Verify a config is present:
 
@@ -226,13 +260,13 @@ gh api "/repos/$REPO/contents/.github/dependabot.yml" --jq '.path' 2>/dev/null \
 
 ---
 
-## 9. CODEOWNERS (optional)
+## 10. CODEOWNERS (optional)
 
 If a specific team should be auto-requested on PRs, add `.github/CODEOWNERS`. Not standard across the sara-* repos today, so skip unless you have a reason.
 
 ---
 
-## 10. Register in infrastructure
+## 11. Register in infrastructure
 
 Not a GitHub setting, but easily forgotten:
 
@@ -262,6 +296,15 @@ gh api "/repos/$REPO/environments" --jq '.environments[].name'
 
 # Secrets
 gh api "/repos/$REPO/actions/secrets" --jq '.secrets[].name'
+
+# Repo variables (should include AZURE_SUBSCRIPTION_ID, AZURE_TENANT_ID for OIDC)
+gh api "/repos/$REPO/actions/variables" --jq '.variables[].name'
+
+# Environment variables (each of Development/Staging/Production should have ACR_PUSH_CLIENT_ID)
+for env in Development Staging Production; do
+  echo "$env:"
+  gh api "/repos/$REPO/environments/$env/variables" --jq '.variables[].name'
+done
 ```
 
 ---
