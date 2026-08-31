@@ -15,7 +15,8 @@ dependencies = [
     "pydantic-settings",
     "loguru",
     "python-dotenv",
-    "requests"
+    "requests",
+    "paho-mqtt>=2.1.0"
 ]
 
 [project.optional-dependencies]

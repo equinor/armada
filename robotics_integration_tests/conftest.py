@@ -22,10 +22,14 @@ from testcontainers.core.network import Network
 from robotics_integration_tests.armada import Armada
 from robotics_integration_tests.custom_containers.azurite import (
     create_azurite_container,
-    azurite_connection_string_for_containers,
     ensure_blob_containers,
     ArmadaStorage,
     AzuriteStorageContainer,
+)
+from robotics_integration_tests.custom_containers.argo_stub import (
+    ArgoStub,
+    WORKFLOW_TYPES,
+    create_argo_stub_container,
 )
 from robotics_integration_tests.custom_containers.flotilla_backend import (
     create_flotilla_backend_container,
@@ -44,6 +48,8 @@ from robotics_integration_tests.custom_containers.mosquitto import (
     FlotillaBroker,
 )
 from robotics_integration_tests.custom_containers.keycloak import (
+    INTEGRATION_TESTS_CLIENT,
+    INTEGRATION_TESTS_SECRET,
     Keycloak,
     create_keycloak_container,
 )
@@ -79,6 +85,7 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
     populate_database_with_minimum_models,
     wait_for_database_to_be_populated,
 )
+from robotics_integration_tests.utilities.mqtt_recorder import MqttRecorder
 from robotics_integration_tests.utilities.sara_backend_api import (
     wait_for_sara_to_be_responsive,
 )
@@ -242,10 +249,14 @@ def armada_storage(network: Network, test_id: str):
     with ExitStack() as stack:
         azurite_containers: Dict[str, AzuriteStorageContainer] = {}
 
+        all_accounts = list(settings.AZURITE_ACCOUNT_BY_ALIAS.values())
+
         for azurite_container_alias in settings.AZURITE_ALIASES:
+            account: str = settings.AZURITE_ACCOUNT_BY_ALIAS[azurite_container_alias]
             container: StreamLoggingDockerContainer = stack.enter_context(
                 create_azurite_container(
                     network=network,
+                    accounts=all_accounts,
                     name=azurite_container_alias,
                     test_id=test_id,
                 )
@@ -253,26 +264,31 @@ def armada_storage(network: Network, test_id: str):
 
             wait_for_port_mapping_to_be_available(container=container, port=10000)
 
-            docker_connection_string: str = azurite_connection_string_for_containers(
-                settings.AZURITE_ACCOUNT,
-                settings.AZURITE_KEY,
-                azurite_container_alias,
-                port=10000,
-            )
-            host_connection_string: str = azurite_connection_string_for_containers(
-                settings.AZURITE_ACCOUNT,
-                settings.AZURITE_KEY,
-                "localhost",
-                port=container.get_exposed_port(10000),
-            )
             azurite_containers[azurite_container_alias] = AzuriteStorageContainer(
                 alias=azurite_container_alias,
+                account=account,
+                port=10000,
+                host_port=int(container.get_exposed_port(10000)),
                 container=container,
-                docker_connection_string=docker_connection_string,
-                host_connection_string=host_connection_string,
             )
 
-            ensure_blob_containers(host_connection_string, "hua", "kaa", "nls", "test")
+            # Azurite keeps a separate blob namespace per account, and an
+            # instance is addressed under different accounts by different
+            # services: ISAR writes inspection metadata to the anonymized
+            # instance under the *raw* account, while SARA writes anonymizer
+            # output to it under the anonymized account. Create the containers
+            # for every account, or whichever service addresses the instance
+            # under the account we skipped fails on a missing container.
+            for account_name in all_accounts:
+                ensure_blob_containers(
+                    azurite_containers[
+                        azurite_container_alias
+                    ].connection_string_for(account_name, from_host=True),
+                    "hua",
+                    "kaa",
+                    "nls",
+                    "test",
+                )
 
         yield ArmadaStorage(azurite_containers=azurite_containers)
 
@@ -349,11 +365,63 @@ def flotilla_backend(
 
 
 @pytest.fixture
+def mqtt_recorder(flotilla_broker: FlotillaBroker):
+    """Records everything ISAR and SARA publish, for direct assertions.
+
+    Depends on the broker alone, so it starts recording before any service is
+    up and therefore cannot miss early messages such as ISAR's startup.
+    """
+    recorder = MqttRecorder(
+        host="localhost",
+        port=int(flotilla_broker.broker.get_exposed_port(settings.FLOTILLA_BROKER_PORT)),
+        username="flotilla",
+        password=settings.FLOTILLA_MQTT_PASSWORD,
+    )
+    recorder.start()
+    try:
+        yield recorder
+    finally:
+        recorder.stop()
+
+
+@pytest.fixture
+def argo_stub(
+    network: Network,
+    keycloak: Keycloak,
+    armada_storage: ArmadaStorage,
+    test_id: str,
+):
+    """Fake Argo trigger service standing in for the analyzer workflows.
+
+    It reaches SARA on its network alias, which is fixed, so this fixture can be
+    built before SARA even though the two call each other.
+    """
+    container, stub = create_argo_stub_container(
+        network=network,
+        sara_internal_url=f"http://{settings.SARA_ALIAS}:{settings.SARA_PORT}",
+        token_url=keycloak.internal_token_url,
+        client_id=INTEGRATION_TESTS_CLIENT,
+        client_secret=INTEGRATION_TESTS_SECRET,
+        token_scope=settings.SARA_SCOPE,
+        blob_connection_strings_by_account=armada_storage.connection_strings_by_account(),
+        name=settings.ARGO_STUB_NAME,
+        port=settings.ARGO_STUB_PORT,
+        alias=settings.ARGO_STUB_ALIAS,
+        test_id=test_id,
+    )
+    with container:
+        wait_for_port_mapping_to_be_available(container=container, port=stub.port)
+        stub.wait_until_ready()
+        yield stub
+
+
+@pytest.fixture
 def sara(
     network: Network,
     keycloak: Keycloak,
     sara_database: SaraDatabase,
     armada_storage: ArmadaStorage,
+    argo_stub: ArgoStub,
     test_id: str,
 ):
     with create_sara_container(
@@ -363,6 +431,11 @@ def sara(
         raw_storage_connection_string=armada_storage.azurite_containers[
             settings.SARA_RAW_STORAGE_CONTAINER
         ].docker_connection_string,
+        blob_connection_strings_by_account=armada_storage.connection_strings_by_account(),
+        argo_trigger_urls={
+            workflow_type: argo_stub.internal_trigger_url(workflow_type)
+            for workflow_type in WORKFLOW_TYPES
+        },
         image=settings.SARA_IMAGE,
         name=settings.SARA_NAME,
         port=settings.SARA_PORT,
@@ -398,6 +471,8 @@ def armada_without_robots(
     sara: Sara,
     armada_storage: ArmadaStorage,
     teams_webhook_receiver: TeamsWebhookReceiver,
+    argo_stub: ArgoStub,
+    mqtt_recorder: MqttRecorder,
 ):
     armada: Armada = Armada()
 
@@ -411,16 +486,27 @@ def armada_without_robots(
     armada.flotilla_broker = flotilla_broker
     armada.flotilla_backend = flotilla_backend
     armada.teams_webhook_receiver = teams_webhook_receiver
+    armada.argo_stub = argo_stub
+    armada.mqtt_recorder = mqtt_recorder
 
     yield armada
 
 
 def _blob_connection_strings(armada: Armada) -> tuple[str, str]:
-    """In-network Azurite connection strings for ISAR's data and metadata stores."""
+    """In-network Azurite connection strings for ISAR's data and metadata stores.
+
+    Both address the raw storage account; only the Azurite instance differs.
+    ISAR is told the account name once, via ISAR_BLOB_STORAGE_ACCOUNT_*, so the
+    two connection strings must agree on it.
+    """
     containers = armada.armada_storage.azurite_containers
     return (
-        containers[settings.SARA_RAW_STORAGE_CONTAINER].docker_connection_string,
-        containers[settings.SARA_ANON_STORAGE_CONTAINER].docker_connection_string,
+        containers[settings.SARA_RAW_STORAGE_CONTAINER].connection_string_for(
+            settings.AZURITE_ACCOUNT
+        ),
+        containers[settings.SARA_ANON_STORAGE_CONTAINER].connection_string_for(
+            settings.AZURITE_ACCOUNT
+        ),
     )
 
 
@@ -487,6 +573,53 @@ def armada_with_single_failing_robot(armada_without_robots: Armada):
         should_fail_normal_task=True,
         test_id=armada.test_id,
     ) as isar_robot:
+
+        robot_id, installation_code_for_robot = setup_robot_in_flotilla(
+            backend_url=armada.flotilla_backend.backend_url,
+            robot_name=settings.ISAR_ROBOT_NAME,
+        )
+
+        armada.robots[settings.ISAR_ROBOT_NAME] = IsarRobot(
+            container=isar_robot,
+            name=settings.ISAR_ROBOT_NAME,
+            robot_id=robot_id,
+            port=settings.ISAR_ROBOT_PORT,
+            alias=settings.ISAR_ROBOT_ALIAS,
+            installation_code=installation_code_for_robot,
+        )
+        _assert_robots_require_authentication(armada)
+        armada.log_startup_info()
+        yield armada
+
+
+@pytest.fixture
+def armada_with_return_home_failing_robot(armada_without_robots: Armada):
+    """A robot whose return-home mission always fails.
+
+    With a retry limit of 2, ISAR exhausts its retries quickly and moves to
+    InterventionNeeded, which is what publishes isar/<id>/intervention_needed
+    and in turn produces a Teams notification from Flotilla.
+    """
+    armada: Armada = armada_without_robots
+    blob_conn_data, blob_conn_metadata = _blob_connection_strings(armada)
+
+    with create_isar_robot_container(
+        network=armada.network,
+        openid_config_url=armada.keycloak.internal_openid_config_url,
+        image=settings.ISAR_ROBOT_IMAGE,
+        name=settings.ISAR_ROBOT_NAME,
+        port=settings.ISAR_ROBOT_PORT,
+        alias=settings.ISAR_ROBOT_ALIAS,
+        blob_storage_connection_string_data=blob_conn_data,
+        blob_storage_connection_string_metadata=blob_conn_metadata,
+        should_fail_return_home=True,
+        return_home_retry_limit=2,
+        should_start_at_home=True,
+        test_id=armada.test_id,
+    ) as isar_robot:
+        wait_for_port_mapping_to_be_available(
+            container=isar_robot, port=settings.ISAR_ROBOT_PORT
+        )
 
         robot_id, installation_code_for_robot = setup_robot_in_flotilla(
             backend_url=armada.flotilla_backend.backend_url,

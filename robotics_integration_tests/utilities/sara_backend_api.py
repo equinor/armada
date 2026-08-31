@@ -105,3 +105,162 @@ def wait_for_sara_log_count(
             f"Expected SARA to log '{log_message}' exactly {expected_count} times "
             f"within {timeout}s, but it occurred {count} times"
         )
+
+
+def list_inspection_records(
+    sara_url: str, installation_code: str = "", page_size: int = 200
+) -> List[Dict]:
+    params: Dict[str, Any] = {"PageSize": page_size}
+    if installation_code:
+        params["InstallationCode"] = installation_code
+
+    response: Response = requests.get(
+        f"{sara_url}/api/inspection-record",
+        params=params,
+        headers=_add_headers(),
+        timeout=30,
+    )
+    response.raise_for_status()
+    return response.json()["items"]
+
+
+def wait_for_inspection_records_for_mission(
+    sara_url: str,
+    mission_run_id: str,
+    expected_count: int,
+    installation_code: str = "",
+    timeout: int = 120,
+) -> List[Dict]:
+    """Poll until SARA has an inspection record per inspection in the mission.
+
+    Records carry the Flotilla mission run id as ``flotillaMissionId``, which is
+    the id ISAR was given when the mission was dispatched.
+    """
+    deadline = time.time() + timeout
+    records: List[Dict] = []
+    while time.time() < deadline:
+        records = [
+            record
+            for record in list_inspection_records(sara_url, installation_code)
+            if record.get("flotillaMissionId") == mission_run_id
+        ]
+        if len(records) >= expected_count:
+            return records
+        time.sleep(2)
+
+    raise AssertionError(
+        f"Expected {expected_count} inspection records for mission "
+        f"{mission_run_id} within {timeout}s, found {len(records)}"
+    )
+
+
+def get_inspection_record(sara_url: str, inspection_id: str) -> Dict:
+    """Fetch one record with its full analysis / run / workflow tree."""
+    response: Response = requests.get(
+        f"{sara_url}/api/inspection-record/inspection-id/{inspection_id}",
+        headers=_add_headers(),
+        timeout=30,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+def get_analysis(record: Dict, analysis_type: str) -> Dict:
+    for analysis in record.get("analyses", []):
+        if analysis.get("analysisType") == analysis_type:
+            return analysis
+    raise AssertionError(
+        f"Inspection record {record.get('inspectionId')} has no '{analysis_type}' "
+        f"analysis; it has {[a.get('analysisType') for a in record.get('analyses', [])]}"
+    )
+
+
+def get_latest_run(record: Dict, analysis_type: str) -> Dict:
+    runs = get_analysis(record, analysis_type).get("runs", [])
+    if not runs:
+        raise AssertionError(
+            f"Analysis '{analysis_type}' on inspection record "
+            f"{record.get('inspectionId')} has no runs"
+        )
+    return max(runs, key=lambda run: run.get("runNumber", 0))
+
+
+def get_workflows_in_order(run: Dict) -> List[Dict]:
+    return sorted(run.get("workflows", []), key=lambda w: w.get("stepNumber", 0))
+
+
+def wait_for_analysis_run_status(
+    sara_url: str,
+    inspection_id: str,
+    analysis_type: str,
+    expected_status: str,
+    timeout: int = 180,
+) -> Dict:
+    """Poll until the newest run of an analysis reaches a terminal status.
+
+    Returns the run, so a caller can go on to assert on its workflows.
+    """
+    deadline = time.time() + timeout
+    last_status = "<no run yet>"
+    while time.time() < deadline:
+        try:
+            run = get_latest_run(
+                get_inspection_record(sara_url, inspection_id), analysis_type
+            )
+            last_status = run.get("status", "")
+            if last_status == expected_status:
+                return run
+        except (AssertionError, requests.RequestException) as error:
+            last_status = f"<{error}>"
+        time.sleep(2)
+
+    raise AssertionError(
+        f"Analysis '{analysis_type}' on inspection {inspection_id} was "
+        f"'{last_status}' after {timeout}s, expected '{expected_status}'"
+    )
+
+
+def get_visualization_location(sara_url: str, inspection_id: str) -> Tuple[int, Any]:
+    """Return the status code and body of the visualization-location endpoint.
+
+    The status is the assertion: 200 succeeded, 202 still running, 422 failed,
+    404 no record or no visualization workflow.
+    """
+    response: Response = requests.get(
+        f"{sara_url}/api/inspection-record/inspection-id/{inspection_id}"
+        f"/visualization-location",
+        headers=_add_headers(),
+        timeout=30,
+    )
+    try:
+        body = response.json()
+    except ValueError:
+        body = response.text
+    return response.status_code, body
+
+
+def wait_for_visualization_location_status(
+    sara_url: str, inspection_id: str, expected_status_code: int, timeout: int = 180
+) -> Any:
+    deadline = time.time() + timeout
+    status_code = 0
+    body: Any = None
+    while time.time() < deadline:
+        status_code, body = get_visualization_location(sara_url, inspection_id)
+        if status_code == expected_status_code:
+            return body
+        time.sleep(2)
+
+    raise AssertionError(
+        f"Visualization location for inspection {inspection_id} returned "
+        f"{status_code} after {timeout}s, expected {expected_status_code}: {body}"
+    )
+
+
+def retry_workflow(sara_url: str, workflow_id: str) -> None:
+    response: Response = requests.post(
+        f"{sara_url}/api/workflow/id/{workflow_id}/retry",
+        headers=_add_headers(),
+        timeout=30,
+    )
+    response.raise_for_status()

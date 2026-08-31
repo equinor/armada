@@ -13,6 +13,24 @@ The following components are currently included in the integration tests:
 - [ISAR Robot](https://github.com/equinor/isar-robot) (your friendly neighbourhood mocked robot which provides the answers you need)
 - [SARA](https://github.com/equinor/sara) (storage and analysis of robot acquired data)
 - A local Keycloak realm (see [Authentication](#authentication))
+- A fake Argo Workflows trigger service (see [The analysis pipeline](#the-analysis-pipeline))
+
+## The analysis pipeline
+SARA hands each analysis step to Argo Workflows by POSTing to a per-workflow trigger URL, and
+the workflow reports back over three callbacks. Neither Argo nor the analyzers themselves
+(`sara-anonymizer`, `sara-fence-detection`, ...) run in the integration tests: they are GPU-hungry
+PyTorch services, and what the tests need to verify is SARA's orchestration, not the models.
+
+`custom_images/argo_stub/` stands in for them. It accepts any trigger, records the payload,
+writes the output blob SARA asked for, and drives the `started` / `result` / `exited` callbacks.
+Tests configure per-workflow-type behaviour through `ArgoStub.set_behaviour`, which is what lets
+`test_analysis_pipeline.py` cover the whole chain — step ordering, blob chaining between steps,
+the `rain-drop` gate, and what happens when the analysis backend is unavailable — without a
+single analyzer.
+
+The stub's callbacks need the `WorkflowStatus.Write` role, which the realm grants to the
+`integration-tests` service account.
+
 
 ## Authentication
 The tests run with authentication **enabled and genuinely exercised**, but without Microsoft
@@ -149,6 +167,15 @@ SARA_MQTT_PASSWORD
 ```
 
 They may be found in the integration test [keyvault](https://portal.azure.com/#@StatoilSRM.onmicrosoft.com/resource/subscriptions/c389567b-2dd0-41fa-a5da-d86b81f80bda/resourceGroups/FlotillaIntegrationTests/providers/Microsoft.KeyVault/vaults/FlotillaTestsKv/overview).
+
+Set `GITHUB_TOKEN` as well. The migrations runner clones `equinor/flotilla` and `equinor/sara`
+to build the database schema, twice per test; GitHub throttles anonymous clones per IP, so
+without a token a local session starts failing with `Migrator failed with exit code 128` after
+a handful of runs. Any token with public read access will do:
+
+```bash
+export GITHUB_TOKEN=$(gh auth token)
+```
 
 The service images live in the private robotics container registries, so log in to the one
 you want to run against before starting. The defaults point at the released `:latest` images

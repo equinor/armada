@@ -39,6 +39,9 @@ def create_isar_robot_container(
     should_fail_return_home: bool = False,
     return_home_retry_limit: int = 5,
     should_start_at_home: bool = False,
+    mission_battery_start_threshold: float | None = None,
+    battery_poll_interval: float | None = None,
+    task_duration: float | None = None,
     test_id: str = "",
 ) -> StreamLoggingDockerContainer:
 
@@ -90,4 +93,23 @@ def create_isar_robot_container(
         .with_env("ROBOT_SHOULD_START_AT_HOME", str(should_start_at_home).lower())
         .with_env("ISAR_ISAR_ID", str(uuid.uuid4()))
     )
+
+    # isar-robot starts at 75% battery and discharges on every battery telemetry
+    # tick. Raising the threshold above the starting level is what makes ISAR
+    # decide the robot must recharge; without it the recharge states are
+    # unreachable in a test-length run.
+    if mission_battery_start_threshold is not None:
+        container = container.with_env(
+            "ISAR_ROBOT_MISSION_BATTERY_START_THRESHOLD",
+            mission_battery_start_threshold,
+        )
+    if battery_poll_interval is not None:
+        container = container.with_env(
+            "ISAR_ROBOT_API_BATTERY_POLL_INTERVAL", battery_poll_interval
+        )
+    if task_duration is not None:
+        container = container.with_env(
+            "ROBOT_MISSION_SIMULATION_TASK_DURATION", task_duration
+        )
+
     return container
