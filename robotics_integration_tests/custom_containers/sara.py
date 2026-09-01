@@ -5,6 +5,7 @@ from robotics_integration_tests.custom_containers.stream_logging_docker_containe
     StreamLoggingDockerContainer,
 )
 from robotics_integration_tests.settings.settings import settings
+from robotics_integration_tests.utilities.mqtt_credentials import MqttCredentials
 
 
 class Sara:
@@ -28,6 +29,7 @@ def create_sara_container(
     keycloak: Keycloak,
     database_connection_string: str,
     raw_storage_connection_string: str,
+    mqtt_credentials: MqttCredentials,
     image: str = "ghcr.io/equinor/sara:latest",
     name: str = "sara",
     port: int = 8100,
@@ -43,7 +45,7 @@ def create_sara_container(
         .with_kwargs(platform="linux/amd64")
         .with_env("Mqtt__Host", settings.FLOTILLA_BROKER_ALIAS)
         .with_env("Mqtt__Port", settings.FLOTILLA_BROKER_PORT)
-        .with_env("Mqtt__Password", settings.SARA_MQTT_PASSWORD)
+        .with_env("Mqtt__Password", mqtt_credentials.passwords["sara"])
         .with_env("Mqtt__Username", "sara")
         .with_env("ASPNETCORE_ENVIRONMENT", settings.ASPNETCORE_ENVIRONMENT)
         .with_env("Authentication__Provider", "Oidc")

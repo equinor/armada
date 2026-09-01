@@ -6,7 +6,7 @@
 # Why this exists
 # ---------------
 # The integration tests normally pull ghcr.io/equinor/
-# {flotilla-backend,sara,isar-robot}. That means a change which spans armada *and* one of the services
+# {flotilla-backend,flotilla-broker,sara,isar-robot}. That means a change which spans armada *and* one of the services
 # cannot be validated until the service change has been merged and an image
 # published -- but the armada side of the change is what proves the service side
 # works. This script closes that gap: build everything locally, run the suite,
@@ -37,6 +37,7 @@ FLOTILLA_DIR="${FLOTILLA_DIR:-$SIBLING_ROOT/flotilla}"
 SARA_DIR="${SARA_DIR:-$SIBLING_ROOT/sara}"
 
 FLOTILLA_IMAGE="flotilla-backend:$TAG"
+BROKER_IMAGE="flotilla-broker:$TAG"
 SARA_IMAGE="sara:$TAG"
 ISAR_ROBOT_IMAGE="isar-robot:$TAG"
 ISAR_ROBOT_BASE_IMAGE="isar-robot:$TAG-base"
@@ -81,6 +82,9 @@ docker build --platform "$PLATFORM" \
     -f "$FLOTILLA_DIR/backend/Dockerfile" \
     -t "$FLOTILLA_IMAGE" \
     "$FLOTILLA_DIR/backend"
+
+log "Building $BROKER_IMAGE from $FLOTILLA_DIR"
+docker build --platform "$PLATFORM" -t "$BROKER_IMAGE" "$FLOTILLA_DIR/broker"
 
 log "Building $SARA_IMAGE from $SARA_DIR"
 docker build --platform "$PLATFORM" -t "$SARA_IMAGE" "$SARA_DIR"
@@ -177,6 +181,7 @@ print(f"  OK   isar-robot has {count} example_data files")
 
 PYTEST_ENV=(
     "FLOTILLA_BACKEND_IMAGE=$FLOTILLA_IMAGE"
+    "FLOTILLA_BROKER_IMAGE=$BROKER_IMAGE"
     "SARA_IMAGE=$SARA_IMAGE"
     "ISAR_ROBOT_IMAGE=$ISAR_ROBOT_IMAGE"
     # Take the database schema from the same checkouts the images were built
@@ -188,7 +193,7 @@ PYTEST_ENV=(
 )
 
 log "Images ready"
-printf '  %s\n' "$FLOTILLA_IMAGE" "$SARA_IMAGE" "$ISAR_ROBOT_IMAGE"
+printf '  %s\n' "$FLOTILLA_IMAGE" "$BROKER_IMAGE" "$SARA_IMAGE" "$ISAR_ROBOT_IMAGE"
 
 if [ "$RUN_TESTS" = true ]; then
     log "Running the integration tests against the local images"
