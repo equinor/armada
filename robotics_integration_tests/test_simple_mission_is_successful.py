@@ -67,15 +67,16 @@ def test_simple_mission_with_three_tags_is_successful(
         expected_status="Home",
     )
 
-    # ISAR must announce the mission as InProgress exactly once, when it asks the
-    # robot to execute it, and then announce the outcome. Asserting the whole
-    # sequence rather than just the final value pins the contract Flotilla relies
-    # on: any extra or reordered status here changes what an operator sees.
+    # ISAR announces the mission's progress over MQTT, and Flotilla derives the
+    # operator-visible mission state from it. Asserting the whole sequence rather
+    # than just the final value turns any change to that protocol into a visible,
+    # deliberate decision instead of a silent one.
     #
-    # Note this encodes the behaviour introduced by equinor/isar#1176, which
-    # dropped the leading NotStarted publish. Against an ISAR image predating that
-    # change the trace is [not_started, in_progress, successful] and this fails.
+    # equinor/isar#1176 removes the leading NotStarted publish, so when that ships
+    # this expectation becomes [IN_PROGRESS, SUCCESSFUL]. The failure is the point:
+    # it forces the contract change to be acknowledged here.
     assert armada.mqtt_recorder.mission_status_trace(mission_run_id) == [
+        mission_status.NOT_STARTED,
         mission_status.IN_PROGRESS,
         mission_status.SUCCESSFUL,
     ], (
