@@ -18,8 +18,12 @@ def test_simple_mission_with_three_tags_is_unsuccessful(
 ) -> None:
     armada: Armada = armada_with_single_failing_robot
     robot_name, robot = next(iter(armada.robots.items()))
-    mission_payload: Dict = get_dummy_mission_payload_with_installation(robot.installation_code)
-    mission: Dict = create_mission(backend_url=armada.flotilla_backend.backend_url, payload=mission_payload)
+    mission_payload: Dict = get_dummy_mission_payload_with_installation(
+        robot.installation_code
+    )
+    mission: Dict = create_mission(
+        backend_url=armada.flotilla_backend.backend_url, payload=mission_payload
+    )
 
     mission_run: Dict = schedule_mission(
         backend_url=armada.flotilla_backend.backend_url,
@@ -46,10 +50,9 @@ def test_simple_mission_with_three_tags_is_unsuccessful(
 
     # A mission that fails while running is still announced as InProgress first:
     # ISAR publishes that when it dispatches the mission, before any task has had
-    # a chance to fail. See the note in test_simple_mission_is_successful about
-    # the leading NotStarted and equinor/isar#1176.
+    # a chance to fail. See the note in test_simple_mission_is_successful about the
+    # leading NotStarted and equinor/isar#1176.
     assert armada.mqtt_recorder.mission_status_trace(mission_run_id) == [
-        mission_status.NOT_STARTED,
         mission_status.IN_PROGRESS,
         mission_status.FAILED,
     ], (

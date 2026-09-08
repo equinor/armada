@@ -33,8 +33,12 @@ def test_simple_mission_with_three_tags_is_successful(
 ) -> None:
     armada: Armada = armada_with_single_successful_robot
     robot_name, robot = next(iter(armada.robots.items()))
-    mission_payload: Dict = get_dummy_mission_payload_with_installation(robot.installation_code)
-    mission: Dict = create_mission(backend_url=armada.flotilla_backend.backend_url, payload=mission_payload)
+    mission_payload: Dict = get_dummy_mission_payload_with_installation(
+        robot.installation_code
+    )
+    mission: Dict = create_mission(
+        backend_url=armada.flotilla_backend.backend_url, payload=mission_payload
+    )
     mission_run: Dict = schedule_mission(
         backend_url=armada.flotilla_backend.backend_url,
         robot_id=robot.robot_id,
@@ -45,7 +49,7 @@ def test_simple_mission_with_three_tags_is_successful(
     logger.info(
         f"Scheduled mission {mission['id']} with id {mission_run['id']} "
         f"on robot {robot_name}"
-        )
+    )
 
     _ = wait_for_mission_run_status(
         backend_url=armada.flotilla_backend.backend_url,
@@ -67,16 +71,15 @@ def test_simple_mission_with_three_tags_is_successful(
         expected_status="Home",
     )
 
-    # ISAR announces the mission's progress over MQTT, and Flotilla derives the
-    # operator-visible mission state from it. Asserting the whole sequence rather
-    # than just the final value turns any change to that protocol into a visible,
-    # deliberate decision instead of a silent one.
+    # ISAR must announce the mission as InProgress exactly once, when it dispatches
+    # it to the robot, and then announce exactly one outcome. Asserting the whole
+    # sequence rather than just the final value pins the contract Flotilla derives
+    # the operator-visible mission state from.
     #
-    # equinor/isar#1176 removes the leading NotStarted publish, so when that ships
-    # this expectation becomes [IN_PROGRESS, SUCCESSFUL]. The failure is the point:
-    # it forces the contract change to be acknowledged here.
+    # equinor/isar#1176 removed the leading NotStarted publish, so this expects the
+    # post-#1176 sequence. Against an ISAR image predating that change the trace is
+    # [not_started, in_progress, successful] and this fails by design.
     assert armada.mqtt_recorder.mission_status_trace(mission_run_id) == [
-        mission_status.NOT_STARTED,
         mission_status.IN_PROGRESS,
         mission_status.SUCCESSFUL,
     ], (

@@ -31,45 +31,53 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
     schedule_mission,
     wait_for_all_robot_statuses,
     wait_for_mission_run_status,
-    wait_for_second_task_status_of_mission_run,
 )
 
-SLOW_TASK_DURATION_SECONDS = 20.0
+# Long tasks, so the mission is still running when the battery gives out.
+SLOW_TASK_DURATION_SECONDS = 70.0
 
 # One battery sample per second, and ISAR reading it just as often, so a crossing
-# is noticed within a second of happening.
+# is noticed within a second of happening. isar-robot discharges 0.4 per sample
+# away from home and charges 2.0 per sample at home, so at this interval the level
+# falls 0.4 %/s and rises 2 %/s.
 BATTERY_PUBLISH_INTERVAL = "1"
 BATTERY_POLL_INTERVAL = "1"
 
-# ISAR's default mission threshold is 25 %. The recharge threshold is raised well
-# above it so that a robot which has just charged has enough headroom to finish
-# its remaining tasks without immediately dropping below the threshold again and
-# looping.
-RECHARGE_THRESHOLD = "60"
+# ISAR's default mission threshold is 25 %. The recharge threshold has to leave
+# enough headroom for the robot to finish what is left of the interrupted mission
+# after charging, or it drops back below 25 % and recharges in a loop. One
+# remaining task drains 28 % at this task duration, so 85 % is ample.
+RECHARGE_THRESHOLD = "85"
 
 # Long enough that neither robot returns home on its own before its battery
 # crosses the threshold. A robot that reaches home starts charging, which would
 # stop the level from ever falling.
 LONG_RETURN_HOME_DELAY = "600"
 
-# 27 % falls past the 25 % threshold in about five seconds of discharging.
+# The idle robot boots away from home and starts discharging immediately, so 27 %
+# falls past the 25 % threshold within seconds. It has no mission to wait for.
 IDLE_ROBOT_INITIAL_BATTERY = 27.0
 
-# 40 % takes about 38 seconds to fall past 25 %, which lands partway through a
-# three task mission of twenty seconds per task.
-MISSION_ROBOT_INITIAL_BATTERY = 40.0
+# The mission robot boots *at* home on a full battery, and stays full because a
+# robot at home charges. That pins the start of the discharge to the moment it
+# leaves home on the mission, rather than to container boot: 100 % falls past
+# 25 % after 187 s, which lands in the third of three seventy second tasks.
+#
+# Booting at home also matters for dispatch. Flotilla reliably hands a mission to
+# a robot that is Home; a robot idling in AwaitNextMission may sit Queued instead.
+MISSION_ROBOT_INITIAL_BATTERY = 100.0
 
 LOW_BATTERY_WHILE_IDLE = "LowBatteryWhileIdle"
 LOW_BATTERY_DURING_MISSION = "LowBatteryDuringMission"
 
 
-def _battery_robot(name: str, alias: str, initial_battery: float) -> RobotScenario:
+def _battery_robot(
+    name: str, alias: str, initial_battery: float, start_at_home: bool
+) -> RobotScenario:
     return RobotScenario(
         name=name,
         alias=alias,
-        # The robot must boot away from home, otherwise it charges from the start
-        # and the battery never falls.
-        should_start_at_home=False,
+        should_start_at_home=start_at_home,
         task_duration_in_seconds=SLOW_TASK_DURATION_SECONDS,
         initial_battery_level=initial_battery,
         extra_environment={
@@ -88,11 +96,13 @@ def test_recharging_scenarios_in_parallel(armada_with_robot_roster) -> None:
                 LOW_BATTERY_WHILE_IDLE,
                 "isar_low_battery_while_idle",
                 IDLE_ROBOT_INITIAL_BATTERY,
+                start_at_home=False,
             ),
             _battery_robot(
                 LOW_BATTERY_DURING_MISSION,
                 "isar_low_battery_during_mission",
                 MISSION_ROBOT_INITIAL_BATTERY,
+                start_at_home=True,
             ),
         ]
     )
@@ -116,11 +126,13 @@ def test_recharging_scenarios_in_parallel(armada_with_robot_roster) -> None:
 
     # Confirm the mission is genuinely under way before the battery runs down, so
     # that the robot is in Monitor rather than still dispatching when it crosses.
-    wait_for_second_task_status_of_mission_run(
+    # The mission run going Ongoing is the right signal: with sixty second tasks
+    # the battery can cross before the second task ever starts.
+    wait_for_mission_run_status(
         backend_url=backend_url,
         mission_run_id=interrupted_run["id"],
-        expected_status="InProgress",
-        timeout=120,
+        expected_status="Ongoing",
+        timeout=180,
     )
 
     # The idle robot has no mission, so it goes straight to recharging.
@@ -133,12 +145,12 @@ def test_recharging_scenarios_in_parallel(armada_with_robot_roster) -> None:
     recorder.wait_for_state(
         LOW_BATTERY_DURING_MISSION,
         isar_status.GOING_TO_RECHARGING_WITH_MISSION,
-        timeout=240,
+        timeout=420,
     )
     recorder.wait_for_state(
         LOW_BATTERY_DURING_MISSION,
         isar_status.RECHARGING_WITH_MISSION,
-        timeout=300,
+        timeout=420,
     )
 
     # Charging past the recharge threshold must hand the mission back and let it
@@ -148,7 +160,7 @@ def test_recharging_scenarios_in_parallel(armada_with_robot_roster) -> None:
         backend_url=backend_url,
         mission_run_id=interrupted_run["id"],
         expected_status="Successful",
-        timeout=300,
+        timeout=420,
     )
 
     # Settle first, then assert the traces: a trace is only complete once the
@@ -159,7 +171,7 @@ def test_recharging_scenarios_in_parallel(armada_with_robot_roster) -> None:
             LOW_BATTERY_WHILE_IDLE: "Home",
             LOW_BATTERY_DURING_MISSION: "Home",
         },
-        timeout=300,
+        timeout=420,
     )
 
     recorder.assert_visited_in_order(
