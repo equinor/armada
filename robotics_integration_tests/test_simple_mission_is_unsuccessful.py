@@ -10,6 +10,7 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
     wait_for_mission_run_status,
     wait_for_robot_status,
 )
+from robotics_integration_tests.utilities import mission_status
 
 
 def test_simple_mission_with_three_tags_is_unsuccessful(
@@ -41,4 +42,16 @@ def test_simple_mission_with_three_tags_is_unsuccessful(
         backend_url=armada.flotilla_backend.backend_url,
         robot_name=robot_name,
         expected_status="Home",
+    )
+
+    # A mission that fails while running is still announced as InProgress first:
+    # ISAR publishes that when it dispatches the mission, before any task has had
+    # a chance to fail. See the note in test_simple_mission_is_successful about
+    # the dependency on equinor/isar#1176.
+    assert armada.mqtt_recorder.mission_status_trace(mission_run_id) == [
+        mission_status.IN_PROGRESS,
+        mission_status.FAILED,
+    ], (
+        "Unexpected mission status sequence published by ISAR: "
+        f"{armada.mqtt_recorder.mission_status_trace(mission_run_id)}"
     )
