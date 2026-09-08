@@ -1,10 +1,16 @@
-"""Four stop scenarios, run as four robots in parallel on one armada.
+"""Four ways a mission is brought to a halt, run as four robots in parallel.
 
-ISAR reaches a different state for each way a mission can be stopped, and none of
-them were covered before: ``Stopping``, ``StoppingPausedMission``,
-``StoppingReturnHome`` and ``StoppingPausedReturnHome``. They are grouped onto a
-single stack because an armada costs roughly twelve containers before any robot is
-added, so four separate tests would cost four of those.
+ISAR reaches a different state for each, and none of them were covered before:
+``Stopping``, ``StoppingPausedMission``, ``StoppingReturnHome`` and
+``StoppingPausedReturnHome``. They are grouped onto a single stack because an
+armada costs roughly twelve containers before any robot is added, so four separate
+tests would cost four of those.
+
+Only the first two are operator stops. A return home cannot be stopped: neither
+``ReturningHome`` nor ``ReturnHomePaused`` handles ``stop_mission``, and the only
+control an operator has over a return home is to pause and resume it. Those two
+states are instead reached by *scheduling a mission*, which supersedes the return
+home; ISAR stops the return-home mission internally to start the new one.
 
 Each robot is verified from its own recorded MQTT status trace. Flotilla's REST
 API only exposes a robot's current status, so it cannot prove a transient state
@@ -55,8 +61,8 @@ NO_BATTERY_INTERFERENCE = {"ISAR_ROBOT_MISSION_BATTERY_START_THRESHOLD": "0"}
 
 STOP_DURING_MISSION = "StopDuringMission"
 STOP_WHILE_PAUSED = "StopWhilePaused"
-STOP_WHILE_RETURNING_HOME = "StopWhileReturningHome"
-STOP_WHILE_RETURN_HOME_PAUSED = "StopWhileReturnHomePaused"
+MISSION_WHILE_RETURNING_HOME = "MissionWhileReturningHome"
+MISSION_WHILE_RETURN_HOME_PAUSED = "MissionWhileReturnHomePaused"
 
 
 def _mission_robot(name: str, alias: str) -> RobotScenario:
@@ -118,10 +124,11 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
             _mission_robot(STOP_DURING_MISSION, "isar_stop_during_mission"),
             _mission_robot(STOP_WHILE_PAUSED, "isar_stop_while_paused"),
             _return_home_robot(
-                STOP_WHILE_RETURNING_HOME, "isar_stop_while_returning_home"
+                MISSION_WHILE_RETURNING_HOME, "isar_mission_while_returning_home"
             ),
             _return_home_robot(
-                STOP_WHILE_RETURN_HOME_PAUSED, "isar_stop_while_return_home_paused"
+                MISSION_WHILE_RETURN_HOME_PAUSED,
+                "isar_mission_while_return_home_paused",
             ),
         ]
     )
@@ -136,6 +143,7 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
         backend_url=backend_url,
         mission_run_id=stop_during_mission_run["id"],
         expected_status="InProgress",
+        timeout=180,
     )
     stop_mission(
         backend_url=backend_url, robot_id=armada.robots[STOP_DURING_MISSION].robot_id
@@ -148,6 +156,7 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
         backend_url=backend_url,
         mission_run_id=stop_while_paused_run["id"],
         expected_status="InProgress",
+        timeout=180,
     )
     pause_mission(
         backend_url=backend_url, robot_id=armada.robots[STOP_WHILE_PAUSED].robot_id
@@ -156,34 +165,46 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
         backend_url=backend_url,
         mission_run_id=stop_while_paused_run["id"],
         expected_status="Paused",
+        timeout=180,
     )
     stop_mission(
         backend_url=backend_url, robot_id=armada.robots[STOP_WHILE_PAUSED].robot_id
     )
 
     # ---------------------------------------------------------------- scenario 3
-    # ReturningHome -> StoppingReturnHome -> Monitor. Scheduling a mission while
-    # the robot is on its way home must abort the return home and run the mission.
-    returning_home_robot = armada.robots[STOP_WHILE_RETURNING_HOME]
+    # ReturningHome -> StoppingReturnHome -> Monitor. There is no way to stop a
+    # return home; scheduling a mission supersedes it, and ISAR stops the
+    # return-home mission internally to start the new one.
+    returning_home_robot = armada.robots[MISSION_WHILE_RETURNING_HOME]
     schedule_return_to_home(
         backend_url=backend_url, robot_id=returning_home_robot.robot_id
     )
-    recorder.wait_for_state(STOP_WHILE_RETURNING_HOME, isar_status.RETURNING_HOME)
-    interrupting_run: Dict = _schedule_dummy_mission(armada, STOP_WHILE_RETURNING_HOME)
+    recorder.wait_for_state(
+        MISSION_WHILE_RETURNING_HOME, isar_status.RETURNING_HOME, timeout=240
+    )
+    interrupting_run: Dict = _schedule_dummy_mission(
+        armada, MISSION_WHILE_RETURNING_HOME
+    )
 
     # ---------------------------------------------------------------- scenario 4
     # ReturningHome -> PausingReturnHome -> ReturnHomePaused ->
-    # StoppingPausedReturnHome -> Monitor.
-    return_home_paused_robot = armada.robots[STOP_WHILE_RETURN_HOME_PAUSED]
+    # StoppingPausedReturnHome -> Monitor. Pause and resume are the only controls
+    # ISAR offers over a return home, so the paused return home is likewise
+    # superseded by scheduling a mission rather than stopped.
+    return_home_paused_robot = armada.robots[MISSION_WHILE_RETURN_HOME_PAUSED]
     schedule_return_to_home(
         backend_url=backend_url, robot_id=return_home_paused_robot.robot_id
     )
-    recorder.wait_for_state(STOP_WHILE_RETURN_HOME_PAUSED, isar_status.RETURNING_HOME)
+    recorder.wait_for_state(
+        MISSION_WHILE_RETURN_HOME_PAUSED, isar_status.RETURNING_HOME, timeout=240
+    )
     pause_mission(backend_url=backend_url, robot_id=return_home_paused_robot.robot_id)
     recorder.wait_for_state(
-        STOP_WHILE_RETURN_HOME_PAUSED, isar_status.RETURN_HOME_PAUSED
+        MISSION_WHILE_RETURN_HOME_PAUSED, isar_status.RETURN_HOME_PAUSED, timeout=240
     )
-    resuming_run: Dict = _schedule_dummy_mission(armada, STOP_WHILE_RETURN_HOME_PAUSED)
+    resuming_run: Dict = _schedule_dummy_mission(
+        armada, MISSION_WHILE_RETURN_HOME_PAUSED
+    )
 
     # ------------------------------------------------------------------ outcomes
     # The two stopped missions must end Cancelled; the two that interrupted a
@@ -193,11 +214,13 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
         backend_url=backend_url,
         mission_run_id=stop_during_mission_run["id"],
         expected_status="Cancelled",
+        timeout=180,
     )
     wait_for_mission_run_status(
         backend_url=backend_url,
         mission_run_id=stop_while_paused_run["id"],
         expected_status="Cancelled",
+        timeout=180,
     )
     wait_for_mission_run_status(
         backend_url=backend_url,
@@ -212,14 +235,27 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
         timeout=180,
     )
 
+    # These two robots were given a long return-home delay so that ISAR would not
+    # start a return home of its own before the test superseded one. That delay is
+    # still in force now their missions have finished, so they would sit in
+    # AwaitNextMission for ten minutes; ask them to go home explicitly instead.
+    schedule_return_to_home(
+        backend_url=backend_url,
+        robot_id=armada.robots[MISSION_WHILE_RETURNING_HOME].robot_id,
+    )
+    schedule_return_to_home(
+        backend_url=backend_url,
+        robot_id=armada.robots[MISSION_WHILE_RETURN_HOME_PAUSED].robot_id,
+    )
+
     # Every robot must settle back at home rather than needing an operator.
     wait_for_all_robot_statuses(
         backend_url=backend_url,
         robot_status_expectations={
             STOP_DURING_MISSION: "Home",
             STOP_WHILE_PAUSED: "Home",
-            STOP_WHILE_RETURNING_HOME: "Home",
-            STOP_WHILE_RETURN_HOME_PAUSED: "Home",
+            MISSION_WHILE_RETURNING_HOME: "Home",
+            MISSION_WHILE_RETURN_HOME_PAUSED: "Home",
         },
         timeout=180,
     )
@@ -240,7 +276,7 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
         ],
     )
     recorder.assert_visited_in_order(
-        STOP_WHILE_RETURNING_HOME,
+        MISSION_WHILE_RETURNING_HOME,
         [
             isar_status.RETURNING_HOME,
             isar_status.STOPPING_RETURN_HOME,
@@ -248,7 +284,7 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
         ],
     )
     recorder.assert_visited_in_order(
-        STOP_WHILE_RETURN_HOME_PAUSED,
+        MISSION_WHILE_RETURN_HOME_PAUSED,
         [
             isar_status.RETURNING_HOME,
             isar_status.PAUSING_RETURN_HOME,
