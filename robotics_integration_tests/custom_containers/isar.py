@@ -1,4 +1,6 @@
 import uuid
+from dataclasses import dataclass, field
+from typing import Dict
 
 from docker.models.networks import Network
 
@@ -26,6 +28,27 @@ class IsarRobot:
         self.installation_code: str = installation_code
 
 
+@dataclass
+class RobotScenario:
+    """One robot's configuration within a multi-robot test.
+
+    Grouping several scenarios onto a single stack keeps the container cost down:
+    an armada is roughly twelve containers before any robot is added, so running
+    four related scenarios as four robots on one stack is far cheaper than four
+    separate tests.
+    """
+
+    name: str
+    alias: str
+    should_fail_normal_task: bool = False
+    should_fail_return_home: bool = False
+    should_start_at_home: bool = True
+    return_home_retry_limit: int = 1
+    task_duration_in_seconds: float | None = None
+    initial_battery_level: float | None = None
+    extra_environment: Dict[str, str] = field(default_factory=dict)
+
+
 def create_isar_robot_container(
     network: Network,
     openid_config_url: str,
@@ -39,6 +62,9 @@ def create_isar_robot_container(
     should_fail_return_home: bool = False,
     return_home_retry_limit: int = 5,
     should_start_at_home: bool = False,
+    task_duration_in_seconds: float | None = None,
+    initial_battery_level: float | None = None,
+    extra_environment: Dict[str, str] | None = None,
     test_id: str = "",
 ) -> StreamLoggingDockerContainer:
 
@@ -90,4 +116,23 @@ def create_isar_robot_container(
         .with_env("ROBOT_SHOULD_START_AT_HOME", str(should_start_at_home).lower())
         .with_env("ISAR_ISAR_ID", str(uuid.uuid4()))
     )
+
+    # Lengthening a task widens the window a test has to interfere with a running
+    # mission, which is what the stopping, lockdown and maintenance scenarios need.
+    if task_duration_in_seconds is not None:
+        container = container.with_env(
+            "ROBOT_MISSION_SIMULATION_TASK_DURATION", task_duration_in_seconds
+        )
+
+    # Requires isar-robot with ROBOT_INITIAL_BATTERY_LEVEL. Lets a test boot the
+    # robot next to ISAR's battery thresholds instead of waiting for the level to
+    # drift down from the default.
+    if initial_battery_level is not None:
+        container = container.with_env(
+            "ROBOT_INITIAL_BATTERY_LEVEL", initial_battery_level
+        )
+
+    for key, value in (extra_environment or {}).items():
+        container = container.with_env(key, value)
+
     return container
