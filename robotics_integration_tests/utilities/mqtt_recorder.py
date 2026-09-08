@@ -181,23 +181,36 @@ class MqttRecorder:
         with self._lock:
             return sorted(self._state_traces)
 
+    def mark(self, robot_name: str) -> int:
+        """Return a marker for the current end of *robot_name*'s trace.
+
+        Pass it back to :meth:`wait_for_state` as ``since`` to wait for the *next*
+        occurrence of a state rather than matching one the robot already passed
+        through. Needed whenever a robot legitimately revisits a state, such as
+        returning to Monitor after a lockdown.
+        """
+        with self._lock:
+            return len(self._state_traces.get(robot_name, []))
+
     def wait_for_state(
-        self, robot_name: str, expected_state: str, timeout: int = 120
+        self, robot_name: str, expected_state: str, timeout: int = 120, since: int = 0
     ) -> None:
         """Block until *robot_name* has been observed in *expected_state*.
 
         Unlike Flotilla polling this cannot miss a state the robot has already
-        passed through, so it is safe to call after the fact.
+        passed through, so it is safe to call after the fact. Pass *since* (from
+        :meth:`mark`) to ignore everything before a given point.
         """
         deadline: datetime = datetime.now() + timedelta(seconds=timeout)
         while datetime.now() < deadline:
-            if expected_state in self.state_trace(robot_name):
+            if expected_state in self.state_trace(robot_name)[since:]:
                 return
             time.sleep(0.5)
 
         raise AssertionError(
             f"Robot '{robot_name}' was never observed in state '{expected_state}' "
-            f"within {timeout}s. Observed trace: {self.state_trace(robot_name)}"
+            f"within {timeout}s (searching from index {since}). "
+            f"Observed trace: {self.state_trace(robot_name)}"
         )
 
     def wait_for_mission_status(
