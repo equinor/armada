@@ -334,6 +334,14 @@ def mqtt_recorder(flotilla_broker: FlotillaBroker):
     try:
         yield recorder
     finally:
+        # Dump every trace on the way out. When an assertion about a transition
+        # fails, the recorded traces are the only record of what the robots
+        # actually did, and the ISAR container logs are gone by teardown.
+        for robot_name in recorder.recorded_robot_names():
+            logger.info(
+                f"MQTT state trace for '{robot_name}': "
+                f"{recorder.state_trace(robot_name)}"
+            )
         recorder.stop()
 
 
