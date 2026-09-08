@@ -20,6 +20,12 @@ from robotics_integration_tests.utilities.sara_backend_api import (
     wait_for_sara_logs,
 )
 
+# Logged by SARA's MQTT handler when triggering an inspection record's
+# analyses throws.
+SARA_ANALYSIS_TRIGGER_FAILED_LOG = (
+    "Error occurred while triggering analyses for InspectionId"
+)
+
 
 def test_simple_mission_with_three_tags_is_successful(
     armada_with_single_successful_robot: Armada,
@@ -60,11 +66,13 @@ def test_simple_mission_with_three_tags_is_successful(
         expected_status="Home",
     )
 
-    # The fencilla chain starts with the anonymizer, and there is no Argo in
-    # the test environment, so SARA is expected to fail triggering it.
+    # There is no Argo in the test environment, so submitting the analysis
+    # throws and SARA logs once per inspection record that requested one.
+    # SARA does not log per workflow type, so this cannot assert on the
+    # anonymizer specifically.
     wait_for_sara_logs(
         container=armada.sara.container,
-        log_message="Failed to trigger workflow anonymizer",
+        log_message=SARA_ANALYSIS_TRIGGER_FAILED_LOG,
     )
 
     # SARA runs only the analyses a mission explicitly asks for; there is no
@@ -78,6 +86,6 @@ def test_simple_mission_with_three_tags_is_successful(
     )
     wait_for_sara_log_count(
         container=armada.sara.container,
-        log_message="Triggering workflow anonymizer",
+        log_message=SARA_ANALYSIS_TRIGGER_FAILED_LOG,
         expected_count=DUMMY_MISSION_TASKS_REQUESTING_ANALYSIS,
     )
