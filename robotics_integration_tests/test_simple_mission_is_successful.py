@@ -19,6 +19,7 @@ from robotics_integration_tests.utilities.sara_backend_api import (
     wait_for_sara_log_count,
     wait_for_sara_logs,
 )
+from robotics_integration_tests.utilities import mission_status
 
 # Logged by SARA's MQTT handler when triggering an inspection record's
 # analyses throws.
@@ -64,6 +65,22 @@ def test_simple_mission_with_three_tags_is_successful(
         backend_url=armada.flotilla_backend.backend_url,
         robot_name=robot_name,
         expected_status="Home",
+    )
+
+    # ISAR must announce the mission as InProgress exactly once, when it asks the
+    # robot to execute it, and then announce the outcome. Asserting the whole
+    # sequence rather than just the final value pins the contract Flotilla relies
+    # on: any extra or reordered status here changes what an operator sees.
+    #
+    # Note this encodes the behaviour introduced by equinor/isar#1176, which
+    # dropped the leading NotStarted publish. Against an ISAR image predating that
+    # change the trace is [not_started, in_progress, successful] and this fails.
+    assert armada.mqtt_recorder.mission_status_trace(mission_run_id) == [
+        mission_status.IN_PROGRESS,
+        mission_status.SUCCESSFUL,
+    ], (
+        "Unexpected mission status sequence published by ISAR: "
+        f"{armada.mqtt_recorder.mission_status_trace(mission_run_id)}"
     )
 
     # There is no Argo in the test environment, so submitting the analysis
