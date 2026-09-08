@@ -47,8 +47,9 @@ def test_simple_mission_with_three_tags_is_unsuccessful(
     # A mission that fails while running is still announced as InProgress first:
     # ISAR publishes that when it dispatches the mission, before any task has had
     # a chance to fail. See the note in test_simple_mission_is_successful about
-    # the dependency on equinor/isar#1176.
+    # the leading NotStarted and equinor/isar#1176.
     assert armada.mqtt_recorder.mission_status_trace(mission_run_id) == [
+        mission_status.NOT_STARTED,
         mission_status.IN_PROGRESS,
         mission_status.FAILED,
     ], (

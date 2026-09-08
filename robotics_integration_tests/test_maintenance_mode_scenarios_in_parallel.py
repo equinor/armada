@@ -29,6 +29,11 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
 
 SLOW_TASK_DURATION_SECONDS = 20.0
 
+# Robots that boot away from home discharge steadily, and a long test can drift
+# past ISAR's default 25 % mission threshold and divert into recharging. These
+# scenarios are not about battery, so the threshold is pinned out of the way.
+NO_BATTERY_INTERFERENCE = {"ISAR_ROBOT_MISSION_BATTERY_START_THRESHOLD": "0"}
+
 MAINTENANCE_WHILE_IDLE = "MaintenanceWhileIdle"
 MAINTENANCE_DURING_MISSION = "MaintenanceDuringMission"
 
@@ -40,11 +45,13 @@ def test_maintenance_mode_scenarios_in_parallel(armada_with_robot_roster) -> Non
                 name=MAINTENANCE_WHILE_IDLE,
                 alias="isar_maintenance_while_idle",
                 task_duration_in_seconds=SLOW_TASK_DURATION_SECONDS,
+                extra_environment=dict(NO_BATTERY_INTERFERENCE),
             ),
             RobotScenario(
                 name=MAINTENANCE_DURING_MISSION,
                 alias="isar_maintenance_during_mission",
                 task_duration_in_seconds=SLOW_TASK_DURATION_SECONDS,
+                extra_environment=dict(NO_BATTERY_INTERFERENCE),
             ),
         ]
     )

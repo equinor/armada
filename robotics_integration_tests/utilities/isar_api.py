@@ -51,6 +51,4 @@ def send_to_lockdown(robot: IsarRobot) -> None:
 
 
 def release_from_lockdown(robot: IsarRobot) -> None:
-    _post(
-        robot, "/schedule/release-lockdown", f"Releasing {robot.name} from lockdown"
-    )
+    _post(robot, "/schedule/release-lockdown", f"Releasing {robot.name} from lockdown")
