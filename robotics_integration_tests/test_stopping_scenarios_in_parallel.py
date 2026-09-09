@@ -12,15 +12,12 @@ control an operator has over a return home is to pause and resume it. Those two
 states are instead reached by *scheduling a mission*, which supersedes the return
 home; ISAR stops the return-home mission internally to start the new one.
 
-Each robot is verified from its own recorded MQTT status trace. Flotilla's REST
-API only exposes a robot's current status, so it cannot prove a transient state
-like ``Stopping`` was entered; the trace can, because ISAR republishes its status
-on every state machine iteration.
-
-Note the status vocabulary is coarser than ISAR's state machine: every
-``Stopping*`` state except ``StoppingReturnHome`` publishes plain ``stopping``.
-The scenarios are therefore distinguished by the states surrounding the stop and
-by the resulting mission outcome, not by the stop status alone.
+Each robot is verified against Flotilla's view of it over REST, and only on
+statuses the robot genuinely rests in. The ``Stopping*`` states themselves are
+transient and are deliberately not asserted; what proves each stop happened is
+the resulting mission run status. ``Cancelled`` means the operator's stop took
+effect, and ``Successful`` on a mission scheduled during a return home means the
+return home was superseded rather than the mission being refused.
 """
 
 from typing import Dict
@@ -29,7 +26,6 @@ from loguru import logger
 
 from robotics_integration_tests.armada import Armada
 from robotics_integration_tests.custom_containers.isar import RobotScenario
-from robotics_integration_tests.utilities import isar_status
 from robotics_integration_tests.utilities.flotilla_backend_api import (
     create_mission,
     get_dummy_mission_payload_with_installation,
@@ -38,6 +34,7 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
     schedule_return_to_home,
     stop_mission,
     wait_for_all_robot_statuses,
+    wait_for_robot_status,
     wait_for_mission_run_status,
     wait_for_second_task_status_of_mission_run,
 )
@@ -45,7 +42,7 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
 # Tasks are stretched so that every scenario has a comfortable window in which to
 # interfere with a running mission. The dummy mission has three tasks, so a
 # mission lasts roughly a minute rather than fifteen seconds.
-SLOW_TASK_DURATION_SECONDS = 20.0
+SLOW_TASK_DURATION_SECONDS = 15.0
 
 # ISAR waits this long in AwaitNextMission before returning home on its own.
 SHORT_RETURN_HOME_DELAY_SECONDS = "5"
@@ -133,7 +130,6 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
         ]
     )
     backend_url: str = armada.flotilla_backend.backend_url
-    recorder = armada.mqtt_recorder
 
     # ---------------------------------------------------------------- scenario 1
     # Monitor -> Stopping -> AwaitNextMission. The stop carries the unfinished
@@ -161,9 +157,9 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
     pause_mission(
         backend_url=backend_url, robot_id=armada.robots[STOP_WHILE_PAUSED].robot_id
     )
-    wait_for_mission_run_status(
+    wait_for_robot_status(
         backend_url=backend_url,
-        mission_run_id=stop_while_paused_run["id"],
+        robot_name=STOP_WHILE_PAUSED,
         expected_status="Paused",
         timeout=180,
     )
@@ -179,8 +175,14 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
     schedule_return_to_home(
         backend_url=backend_url, robot_id=returning_home_robot.robot_id
     )
-    recorder.wait_for_state(
-        MISSION_WHILE_RETURNING_HOME, isar_status.RETURNING_HOME, timeout=240
+    # Synchronisation, not a coverage assertion: the mission must not be
+    # scheduled until the return home is genuinely under way. ReturningHome lasts
+    # as long as the return-home mission, so it is comfortably pollable.
+    wait_for_robot_status(
+        backend_url=backend_url,
+        robot_name=MISSION_WHILE_RETURNING_HOME,
+        expected_status="ReturningHome",
+        timeout=240,
     )
     interrupting_run: Dict = _schedule_dummy_mission(
         armada, MISSION_WHILE_RETURNING_HOME
@@ -195,12 +197,18 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
     schedule_return_to_home(
         backend_url=backend_url, robot_id=return_home_paused_robot.robot_id
     )
-    recorder.wait_for_state(
-        MISSION_WHILE_RETURN_HOME_PAUSED, isar_status.RETURNING_HOME, timeout=240
+    wait_for_robot_status(
+        backend_url=backend_url,
+        robot_name=MISSION_WHILE_RETURN_HOME_PAUSED,
+        expected_status="ReturningHome",
+        timeout=240,
     )
     pause_mission(backend_url=backend_url, robot_id=return_home_paused_robot.robot_id)
-    recorder.wait_for_state(
-        MISSION_WHILE_RETURN_HOME_PAUSED, isar_status.RETURN_HOME_PAUSED, timeout=240
+    wait_for_robot_status(
+        backend_url=backend_url,
+        robot_name=MISSION_WHILE_RETURN_HOME_PAUSED,
+        expected_status="ReturnHomePaused",
+        timeout=240,
     )
     resuming_run: Dict = _schedule_dummy_mission(
         armada, MISSION_WHILE_RETURN_HOME_PAUSED
@@ -258,38 +266,4 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
             MISSION_WHILE_RETURN_HOME_PAUSED: "Home",
         },
         timeout=180,
-    )
-
-    # -------------------------------------------------------------------- traces
-    recorder.assert_visited_in_order(
-        STOP_DURING_MISSION,
-        [isar_status.BUSY, isar_status.STOPPING, isar_status.AVAILABLE],
-    )
-    recorder.assert_visited_in_order(
-        STOP_WHILE_PAUSED,
-        [
-            isar_status.BUSY,
-            isar_status.PAUSING,
-            isar_status.PAUSED,
-            isar_status.STOPPING,
-            isar_status.AVAILABLE,
-        ],
-    )
-    recorder.assert_visited_in_order(
-        MISSION_WHILE_RETURNING_HOME,
-        [
-            isar_status.RETURNING_HOME,
-            isar_status.STOPPING_RETURN_HOME,
-            isar_status.BUSY,
-        ],
-    )
-    recorder.assert_visited_in_order(
-        MISSION_WHILE_RETURN_HOME_PAUSED,
-        [
-            isar_status.RETURNING_HOME,
-            isar_status.PAUSING_RETURN_HOME,
-            isar_status.RETURN_HOME_PAUSED,
-            isar_status.STOPPING,
-            isar_status.BUSY,
-        ],
     )

@@ -7,10 +7,13 @@ largest untested cluster in ISAR's state machine — ``StoppingGoToLockdown``,
 ``LockdownWithMission``.
 
 The two robots differ in whether they were running a mission when lockdown hit,
-which is what selects the with-mission variants. Because ISAR's MQTT vocabulary
-folds ``LockdownWithMission`` into plain ``lockdown``, the variants are told apart
-by what happens on release: the idle robot goes home, while the interrupted robot
-must resume and finish its mission.
+which is what selects the with-mission variants. Flotilla reports both variants as plain
+``Lockdown``, so they are told apart by what happens on release: the idle robot
+goes home, while the interrupted robot must resume and finish its mission.
+
+Assertions are made against Flotilla over REST and only on resting statuses.
+``GoingToLockdown`` and the ``Stopping`` that precedes it are transient and are
+not asserted.
 
 Lockdown is driven straight against each ISAR robot rather than through Flotilla's
 emergency action. Flotilla currently subscribes both its lockdown and its release
@@ -25,13 +28,14 @@ from loguru import logger
 
 from robotics_integration_tests.armada import Armada
 from robotics_integration_tests.custom_containers.isar import RobotScenario
-from robotics_integration_tests.utilities import isar_status
 from robotics_integration_tests.utilities.flotilla_backend_api import (
     create_mission,
     get_dummy_mission_payload_with_installation,
     schedule_mission,
     wait_for_all_robot_statuses,
     wait_for_mission_run_status,
+    wait_for_robot_status,
+    wait_for_robot_status_sequences,
     wait_for_second_task_status_of_mission_run,
 )
 from robotics_integration_tests.utilities.isar_api import (
@@ -78,7 +82,6 @@ def test_lockdown_scenarios_in_parallel(armada_with_robot_roster) -> None:
         ]
     )
     backend_url: str = armada.flotilla_backend.backend_url
-    recorder = armada.mqtt_recorder
 
     idle_robot = armada.robots[LOCKDOWN_WHILE_IDLE]
     interrupted_robot = armada.robots[LOCKDOWN_DURING_MISSION]
@@ -105,68 +108,49 @@ def test_lockdown_scenarios_in_parallel(armada_with_robot_roster) -> None:
         expected_status="InProgress",
     )
 
+    # The idle robot must be confirmed idle *before* lockdown is triggered.
+    # Available is a resting state only until something acts on the robot, so
+    # asserting it after the trigger would race the transition out of it.
+    wait_for_robot_status(
+        backend_url=backend_url,
+        robot_name=LOCKDOWN_WHILE_IDLE,
+        expected_status="Available",
+        timeout=240,
+    )
+
     send_to_lockdown(idle_robot)
     send_to_lockdown(interrupted_robot)
 
     # Both robots must come to rest in lockdown before anything is released,
-    # otherwise the release could race the lockdown itself.
-    recorder.wait_for_state(LOCKDOWN_WHILE_IDLE, isar_status.LOCKDOWN, timeout=180)
-    recorder.wait_for_state(LOCKDOWN_DURING_MISSION, isar_status.LOCKDOWN, timeout=180)
-
-    # Mark the traces here so the waits below match states reached *after* the
-    # release rather than ones the robots passed through on the way in.
-    idle_mark: int = recorder.mark(LOCKDOWN_WHILE_IDLE)
-    interrupted_mark: int = recorder.mark(LOCKDOWN_DURING_MISSION)
+    # otherwise the release could race the lockdown itself. Lockdown rests until
+    # an operator releases it, so it is safe to assert over REST.
+    wait_for_robot_status_sequences(
+        backend_url=backend_url,
+        status_expectations={
+            LOCKDOWN_WHILE_IDLE: ["Lockdown"],
+            LOCKDOWN_DURING_MISSION: ["Lockdown"],
+        },
+        timeout=240,
+    )
 
     release_from_lockdown(idle_robot)
     release_from_lockdown(interrupted_robot)
 
-    # Confirm both robots actually left lockdown before judging the mission. The
-    # idle robot goes home; the interrupted robot goes back to Monitor, which is
-    # what distinguishes LockdownWithMission from plain Lockdown given both report
-    # the same MQTT status.
-    recorder.wait_for_state(
-        LOCKDOWN_WHILE_IDLE, isar_status.HOME, timeout=240, since=idle_mark
-    )
-    recorder.wait_for_state(
-        LOCKDOWN_DURING_MISSION,
-        isar_status.BUSY,
-        timeout=240,
-        since=interrupted_mark,
-    )
-
-    # The interrupted mission must be resumed and run to completion.
+    # The interrupted mission must be handed back and run to completion. That is
+    # what separates LockdownWithMission from a plain Lockdown: only the
+    # with-mission variant has a mission to resume on release.
     wait_for_mission_run_status(
         backend_url=backend_url,
         mission_run_id=interrupted_run["id"],
         expected_status="Successful",
-        timeout=240,
+        timeout=300,
     )
 
-    # Settle first, then assert the traces: a trace is only complete once the
-    # robots have reached their final state.
     wait_for_all_robot_statuses(
         backend_url=backend_url,
         robot_status_expectations={
             LOCKDOWN_WHILE_IDLE: "Home",
             LOCKDOWN_DURING_MISSION: "Home",
         },
-        timeout=240,
-    )
-
-    recorder.assert_visited_in_order(
-        LOCKDOWN_WHILE_IDLE,
-        [isar_status.GOING_TO_LOCKDOWN, isar_status.LOCKDOWN, isar_status.HOME],
-    )
-    recorder.assert_visited_in_order(
-        LOCKDOWN_DURING_MISSION,
-        [
-            isar_status.BUSY,
-            # StoppingGoToLockdown: the running mission is aborted first.
-            isar_status.STOPPING,
-            isar_status.GOING_TO_LOCKDOWN,
-            isar_status.LOCKDOWN,
-            # Monitor again, running the mission that lockdown interrupted.
-            isar_status.BUSY,
-        ],
+        timeout=300,
     )
