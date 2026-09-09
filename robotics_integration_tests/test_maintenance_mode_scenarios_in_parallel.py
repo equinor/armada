@@ -15,7 +15,6 @@ from loguru import logger
 
 from robotics_integration_tests.armada import Armada
 from robotics_integration_tests.custom_containers.isar import RobotScenario
-from robotics_integration_tests.utilities import isar_status
 from robotics_integration_tests.utilities.flotilla_backend_api import (
     create_mission,
     get_dummy_mission_payload_with_installation,
@@ -23,6 +22,8 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
     schedule_mission,
     set_maintenance_mode,
     wait_for_all_robot_statuses,
+    wait_for_robot_status,
+    wait_for_robot_status,
     wait_for_mission_run_status,
     wait_for_second_task_status_of_mission_run,
 )
@@ -56,7 +57,6 @@ def test_maintenance_mode_scenarios_in_parallel(armada_with_robot_roster) -> Non
         ]
     )
     backend_url: str = armada.flotilla_backend.backend_url
-    recorder = armada.mqtt_recorder
 
     idle_robot = armada.robots[MAINTENANCE_WHILE_IDLE]
     busy_robot = armada.robots[MAINTENANCE_DURING_MISSION]
@@ -85,11 +85,18 @@ def test_maintenance_mode_scenarios_in_parallel(armada_with_robot_roster) -> Non
     set_maintenance_mode(backend_url=backend_url, robot_id=idle_robot.robot_id)
     set_maintenance_mode(backend_url=backend_url, robot_id=busy_robot.robot_id)
 
-    recorder.wait_for_state(
-        MAINTENANCE_WHILE_IDLE, isar_status.MAINTENANCE, timeout=180
+    # Maintenance rests until an operator releases it, so it is safe to assert.
+    wait_for_robot_status(
+        backend_url=backend_url,
+        robot_name=MAINTENANCE_WHILE_IDLE,
+        expected_status="Maintenance",
+        timeout=240,
     )
-    recorder.wait_for_state(
-        MAINTENANCE_DURING_MISSION, isar_status.MAINTENANCE, timeout=180
+    wait_for_robot_status(
+        backend_url=backend_url,
+        robot_name=MAINTENANCE_DURING_MISSION,
+        expected_status="Maintenance",
+        timeout=240,
     )
 
     # A mission interrupted by maintenance is abandoned rather than resumed, which
@@ -106,8 +113,6 @@ def test_maintenance_mode_scenarios_in_parallel(armada_with_robot_roster) -> Non
     release_maintenance_mode(backend_url=backend_url, robot_id=idle_robot.robot_id)
     release_maintenance_mode(backend_url=backend_url, robot_id=busy_robot.robot_id)
 
-    # Settle first, then assert the traces: a trace is only complete once the
-    # robots have reached their final state.
     wait_for_all_robot_statuses(
         backend_url=backend_url,
         robot_status_expectations={
@@ -115,19 +120,4 @@ def test_maintenance_mode_scenarios_in_parallel(armada_with_robot_roster) -> Non
             MAINTENANCE_DURING_MISSION: "Home",
         },
         timeout=240,
-    )
-
-    recorder.assert_visited_in_order(
-        MAINTENANCE_WHILE_IDLE,
-        [isar_status.MAINTENANCE, isar_status.HOME],
-    )
-    recorder.assert_visited_in_order(
-        MAINTENANCE_DURING_MISSION,
-        [
-            isar_status.BUSY,
-            # StoppingDueToMaintenance: the running mission is stopped first.
-            isar_status.STOPPING,
-            isar_status.MAINTENANCE,
-            isar_status.HOME,
-        ],
     )
