@@ -40,17 +40,17 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v6
         with:
           persist-credentials: false
 
       - name: Install pnpm
-        uses: pnpm/action-setup@b307475762933b98ed359c036b0e51f26b63b74b #v5
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 #v5
         with:
           version: ${{ inputs.pnpm-version }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e #v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 #v6
         with:
           node-version: ${{ inputs.node-version }}
 
@@ -73,7 +73,7 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 #v8
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 #v8
         with:
           commit-message: "GHA: Frontend dependency ${{ inputs.operation == 'audit-fix' && 'security fix' || 'update' }}"
           title: "Frontend dependency ${{ inputs.operation == 'audit-fix' && 'security fix' || 'update' }}"
