@@ -249,14 +249,53 @@ Expected labels include `bug`, `enhancement`, `documentation`, `stale`, etc. —
 
 ---
 
-## 9. Dependabot
+## 9. Dependency updates
 
-Ships with the template as `.github/dependabot.yml` if you want it — otherwise not enabled by default. Verify a config is present:
+Use native Dependabot for Python projects managed with `pyproject.toml` and `uv.lock`, rather than a scheduled workflow that upgrades the lockfile and creates its own PR. Commit both files and add this entry to `.github/dependabot.yml`, preserving any existing Docker, GitHub Actions, npm, or other ecosystem entries:
 
-```bash
-gh api "/repos/$REPO/contents/.github/dependabot.yml" --jq '.path' 2>/dev/null \
-  || echo "No dependabot.yml (optional)"
+```yaml
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    allow:
+      - dependency-type: all
+    open-pull-requests-limit: 5
+    groups:
+      python-patch-minor:
+        patterns:
+          - "*"
+        update-types:
+          - patch
+          - minor
+      python-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
 ```
+
+`dependency-type: all` includes transitive lockfile dependencies, not just direct declarations. Keep patch/minor updates together and major updates in a separate group for review; the five-PR limit applies to version updates for this entry. Python updates run weekly on Monday. Keep other ecosystem schedules and groups intentional rather than replacing them with the Python settings.
+
+Inventory **all** Python projects, including nested tools, examples, and test projects. A root `directory: /` entry does not cover independent nested projects with their own lockfiles. Add an entry for each such directory, or replace `directory` with an explicit `directories` list using the same schedule, allowance, PR limit, and groups. Do not configure overlapping entries for the same ecosystem and target branch. Members sharing a uv workspace's root lockfile should be maintained through that workspace root rather than treated as independent lockfiles.
+
+Dependabot natively applies a **three-day cooldown to version updates**, even without a `cooldown` setting; security updates are not delayed by this default. An eligible release is picked up on the next scheduled run after its cooldown. See the [Dependabot cooldown reference](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference#cooldown-).
+
+Remove the repository's obsolete scheduled updater caller when enabling the replacement. Do not remove an Armada reusable helper until all current callers have migrated and merged: `compile_python_requirements_and_create_pr.yml` is still used at `@main` by `sara-sap`, `isar-taurob-for-open-source`, and `alitra`, and `npm_dependency_update_and_create_pr.yml` is still used by `pointilla_maps`. Close old updater PRs and delete their branches only **after the replacement configuration has merged**.
+
+**Verify:**
+```bash
+gh api "/repos/$REPO/contents/.github/dependabot.yml" --jq '.content' | base64 --decode
+gh api "/repos/$REPO/git/trees/main?recursive=1" \
+  --jq '.tree[].path | select(test("(^|/)(pyproject\\.toml|uv\\.lock)$"))'
+gh api "/repos/$REPO/actions/workflows" \
+  --jq '.workflows[] | {name, path, state}'
+```
+
+Confirm every independent `uv.lock` directory is covered and old scheduled updater callers are gone. After merge, inspect Dependabot's update logs and generated PRs to confirm the configuration is active.
 
 ---
 
