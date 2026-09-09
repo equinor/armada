@@ -745,12 +745,139 @@ def wait_for_all_robot_statuses(
     return results
 
 
-def pause_mission(backend_url: str, robot_id: str) -> None:
-    url: str = f"{backend_url}/robots/{robot_id}/pause"
-    response: Response = requests.post(
-        url,
-        headers=_add_headers(),
-    )
+def wait_for_robot_statuses_in_order(
+    backend_url: str,
+    robot_name: str,
+    expected_statuses: List[str],
+    timeout: int = 300,
+) -> None:
+    """Poll a robot until it has passed through *expected_statuses*, in order.
+
+    Statuses not in the list are ignored, so a caller only has to name the ones
+    it cares about. This is a sequenced form of :func:`wait_for_robot_status`.
+
+    Only assert statuses the robot genuinely rests in. Flotilla exposes the
+    robot's *current* status, so a state that ISAR passes through in under a
+    second can fall between two polls and will be missed. The resting states are
+    Home, Paused, ReturnHomePaused, Lockdown, Maintenance and InterventionNeeded;
+    Available rests only while the robot's RETURN_HOME_DELAY has not expired, and
+    Recharging / RechargingWithMission rest until the battery reaches the recharge
+    threshold. Everything else -- Stopping, Pausing, GoingTo*, ReturningHome and
+    Busy -- is transient and must not be asserted here.
+    """
+    remaining: List[str] = list(expected_statuses)
+    observed: List[str] = []
+    start_time: datetime = datetime.now()
+
+    while remaining:
+        if datetime.now() - start_time > timedelta(seconds=timeout):
+            raise AssertionError(
+                f"Robot '{robot_name}' did not pass through the expected statuses "
+                f"within {timeout}s.\n"
+                f"  Expected in order: {expected_statuses}\n"
+                f"  Still waiting for: {remaining[0]}\n"
+                f"  Statuses observed: {observed}"
+            )
+
+        try:
+            robot: Dict = get_robot_by_name(backend_url=backend_url, name=robot_name)
+        except Exception:
+            logger.warning(f"Failed to retrieve robot '{robot_name}', will retry...")
+            time.sleep(1)
+            continue
+
+        current_status: str = robot.get("status")
+        if not observed or observed[-1] != current_status:
+            observed.append(current_status)
+            logger.info(f"Robot '{robot_name}' is in status '{current_status}'")
+
+        if current_status == remaining[0]:
+            logger.info(
+                f"Robot '{robot_name}' reached expected status '{remaining[0]}'"
+            )
+            remaining.pop(0)
+            continue
+
+        time.sleep(1)
+
+    logger.info(f"Robot '{robot_name}' passed through {expected_statuses} in order")
+
+
+def wait_for_robot_status_sequences(
+    backend_url: str,
+    status_expectations: Dict[str, List[str]],
+    timeout: int = 420,
+) -> None:
+    """Track several robots' status sequences at once.
+
+    *status_expectations* maps a robot name to the statuses it must pass through,
+    in order. Every robot is polled in the same loop and advanced independently,
+    so no assumption is made about which robot reaches its next status first.
+    Waiting on robots one after another would otherwise risk the second robot
+    passing through a status while the first is still being polled.
+
+    The same restriction applies as for :func:`wait_for_robot_statuses_in_order`:
+    only name statuses the robot genuinely rests in.
+    """
+    remaining: Dict[str, List[str]] = {
+        name: list(statuses) for name, statuses in status_expectations.items()
+    }
+    observed: Dict[str, List[str]] = {name: [] for name in status_expectations}
+    start_time: datetime = datetime.now()
+
+    while any(remaining.values()):
+        if datetime.now() - start_time > timedelta(seconds=timeout):
+            outstanding = {
+                name: statuses for name, statuses in remaining.items() if statuses
+            }
+            raise AssertionError(
+                f"Robots did not pass through their expected statuses within "
+                f"{timeout}s.\n"
+                f"  Expected in order: {status_expectations}\n"
+                f"  Still waiting for: {outstanding}\n"
+                f"  Statuses observed: {observed}"
+            )
+
+        for robot_name, statuses in remaining.items():
+            if not statuses:
+                continue
+            try:
+                robot: Dict = get_robot_by_name(
+                    backend_url=backend_url, name=robot_name
+                )
+            except Exception:
+                logger.warning(
+                    f"Failed to retrieve robot '{robot_name}', will retry..."
+                )
+                continue
+
+            current_status: str = robot.get("status")
+            seen: List[str] = observed[robot_name]
+            if not seen or seen[-1] != current_status:
+                seen.append(current_status)
+                logger.info(f"Robot '{robot_name}' is in status '{current_status}'")
+
+            if current_status == statuses[0]:
+                logger.info(
+                    f"Robot '{robot_name}' reached expected status '{statuses[0]}'"
+                )
+                statuses.pop(0)
+
+        if any(remaining.values()):
+            time.sleep(1)
+
+    logger.info(f"All robots passed through {status_expectations} in order")
+
+
+def _post_robot_command(url: str, description: str) -> None:
+    """POST a Flotilla robot command and fail loudly with the problem details.
+
+    Flotilla answers these commands with 204 and a ProblemDetails body on
+    failure, so surfacing the body is the difference between a debuggable failure
+    and a bare status code.
+    """
+    response: Response = requests.post(url, headers=_add_headers())
+
     if not response.ok:
         body = response.text
         try:
@@ -758,30 +885,80 @@ def pause_mission(backend_url: str, robot_id: str) -> None:
         except Exception:
             problem = None
         raise AssertionError(
-            f"POST {url} returned {response.status_code}\n"
+            f"{description} failed: POST {url} returned {response.status_code}\n"
             f"Response headers: {dict(response.headers)}\n"
             f"Response body:\n{body}\n"
             f"Parsed JSON (if any):\n{problem}"
         )
-    response.raise_for_status()
+
+    logger.info(f"{description} succeeded")
+
+
+def pause_mission(backend_url: str, robot_id: str) -> None:
+    _post_robot_command(
+        f"{backend_url}/robots/{robot_id}/pause", f"Pausing mission on robot {robot_id}"
+    )
 
 
 def resume_mission(backend_url: str, robot_id: str) -> None:
-    url = str(f"{backend_url}/robots/{robot_id}/resume")
-    response: Response = requests.post(
-        url,
-        headers=_add_headers(),
+    _post_robot_command(
+        f"{backend_url}/robots/{robot_id}/resume",
+        f"Resuming mission on robot {robot_id}",
     )
-    if not response.ok:
-        body = response.text
-        try:
-            problem = response.json()
-        except Exception:
-            problem = None
-        raise AssertionError(
-            f"POST {url} returned {response.status_code}\n"
-            f"Response headers: {dict(response.headers)}\n"
-            f"Response body:\n{body}\n"
-            f"Parsed JSON (if any):\n{problem}"
-        )
-    response.raise_for_status()
+
+
+def stop_mission(backend_url: str, robot_id: str) -> None:
+    _post_robot_command(
+        f"{backend_url}/robots/{robot_id}/stop",
+        f"Stopping mission on robot {robot_id}",
+    )
+
+
+def schedule_return_to_home(backend_url: str, robot_id: str) -> None:
+    _post_robot_command(
+        f"{backend_url}/return-to-home/schedule-return-to-home/{robot_id}",
+        f"Scheduling return to home for robot {robot_id}",
+    )
+
+
+def release_intervention_needed(backend_url: str, robot_id: str) -> None:
+    _post_robot_command(
+        f"{backend_url}/robots/{robot_id}/release-intervention-needed",
+        f"Releasing robot {robot_id} from intervention needed",
+    )
+
+
+def set_maintenance_mode(backend_url: str, robot_id: str) -> None:
+    _post_robot_command(
+        f"{backend_url}/robots/set-maintenance-mode/{robot_id}",
+        f"Setting maintenance mode on robot {robot_id}",
+    )
+
+
+def release_maintenance_mode(backend_url: str, robot_id: str) -> None:
+    _post_robot_command(
+        f"{backend_url}/robots/release-maintenance-mode/{robot_id}",
+        f"Releasing robot {robot_id} from maintenance mode",
+    )
+
+
+def send_all_robots_to_lockdown(backend_url: str, installation_code: str) -> None:
+    """Trigger lockdown for a whole installation.
+
+    Flotilla has no per-robot lockdown endpoint: lockdown is an installation-wide
+    emergency action, which is also how an operator invokes it. Robots on the
+    installation each enter lockdown from whatever state they are currently in.
+    """
+    _post_robot_command(
+        f"{backend_url}/emergency-action/{installation_code}"
+        "/abort-current-missions-and-send-all-robots-to-safe-zone",
+        f"Sending all robots on {installation_code} to lockdown",
+    )
+
+
+def clear_emergency_state(backend_url: str, installation_code: str) -> None:
+    """Release a whole installation from lockdown."""
+    _post_robot_command(
+        f"{backend_url}/emergency-action/{installation_code}/clear-emergency-state",
+        f"Clearing emergency state on {installation_code}",
+    )

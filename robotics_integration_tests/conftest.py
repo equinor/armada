@@ -34,6 +34,7 @@ from robotics_integration_tests.custom_containers.flotilla_backend import (
 from robotics_integration_tests.custom_containers.isar import (
     create_isar_robot_container,
     IsarRobot,
+    RobotScenario,
 )
 from robotics_integration_tests.custom_containers.migrations_runner import (
     create_migrations_runner_container,
@@ -82,6 +83,11 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
 from robotics_integration_tests.utilities.sara_backend_api import (
     wait_for_sara_to_be_responsive,
 )
+from robotics_integration_tests.utilities.mqtt_recorder import MqttRecorder
+
+# The broker user ISAR publishes as; granted `readwrite isar/#` by the broker's
+# access_control file, which is also what the recorder needs in order to subscribe.
+ISAR_MQTT_USERNAME = "isar"
 
 
 def _pull_latest_images() -> None:
@@ -311,6 +317,35 @@ def teams_webhook_receiver(network: Network, test_id: str):
 
 
 @pytest.fixture
+def mqtt_recorder(flotilla_broker: FlotillaBroker):
+    """Records every ISAR status and mission message published during a test.
+
+    Ordered before the robot fixtures so that no transition is missed: ISAR
+    republishes its status on every state machine iteration, and a recorder that
+    attached late would silently lose the early states.
+    """
+    recorder = MqttRecorder(
+        host="localhost",
+        port=int(flotilla_broker.broker.get_exposed_port(flotilla_broker.port)),
+        username=ISAR_MQTT_USERNAME,
+        password=settings.ISAR_MQTT_PASSWORD,
+    )
+    recorder.start(flotilla_broker.broker)
+    try:
+        yield recorder
+    finally:
+        # Dump every trace on the way out. When an assertion about a transition
+        # fails, the recorded traces are the only record of what the robots
+        # actually did, and the ISAR container logs are gone by teardown.
+        for robot_name in recorder.recorded_robot_names():
+            logger.info(
+                f"MQTT state trace for '{robot_name}': "
+                f"{recorder.state_trace(robot_name)}"
+            )
+        recorder.stop()
+
+
+@pytest.fixture
 def flotilla_backend(
     network: Network,
     keycloak: Keycloak,
@@ -398,6 +433,7 @@ def armada_without_robots(
     sara: Sara,
     armada_storage: ArmadaStorage,
     teams_webhook_receiver: TeamsWebhookReceiver,
+    mqtt_recorder: MqttRecorder,
 ):
     armada: Armada = Armada()
 
@@ -411,6 +447,7 @@ def armada_without_robots(
     armada.flotilla_broker = flotilla_broker
     armada.flotilla_backend = flotilla_backend
     armada.teams_webhook_receiver = teams_webhook_receiver
+    armada.mqtt_recorder = mqtt_recorder
 
     yield armada
 
@@ -506,17 +543,83 @@ def armada_with_single_failing_robot(armada_without_robots: Armada):
         yield armada
 
 
+def _start_robot_roster(armada: Armada, roster, stack: ExitStack) -> Armada:
+    """Start one ISAR container per scenario and register each with Flotilla.
+
+    Shared by every multi-robot fixture so that adding a scenario is a matter of
+    describing it, not of copying container plumbing.
+    """
+    blob_conn_data, blob_conn_metadata = _blob_connection_strings(armada)
+
+    for scenario in roster:
+        container = stack.enter_context(
+            create_isar_robot_container(
+                network=armada.network,
+                openid_config_url=armada.keycloak.internal_openid_config_url,
+                image=settings.ISAR_ROBOT_IMAGE,
+                name=scenario.name,
+                port=settings.ISAR_ROBOT_PORT,
+                alias=scenario.alias,
+                blob_storage_connection_string_data=blob_conn_data,
+                blob_storage_connection_string_metadata=blob_conn_metadata,
+                should_fail_normal_task=scenario.should_fail_normal_task,
+                should_fail_return_home=scenario.should_fail_return_home,
+                return_home_retry_limit=scenario.return_home_retry_limit,
+                should_start_at_home=scenario.should_start_at_home,
+                task_duration_in_seconds=scenario.task_duration_in_seconds,
+                initial_battery_level=scenario.initial_battery_level,
+                extra_environment=scenario.extra_environment,
+                test_id=armada.test_id,
+            )
+        )
+
+        wait_for_port_mapping_to_be_available(
+            container=container, port=settings.ISAR_ROBOT_PORT
+        )
+
+        robot_id, installation_code = setup_robot_in_flotilla(
+            backend_url=armada.flotilla_backend.backend_url,
+            robot_name=scenario.name,
+        )
+
+        armada.robots[scenario.name] = IsarRobot(
+            container=container,
+            name=scenario.name,
+            robot_id=robot_id,
+            port=settings.ISAR_ROBOT_PORT,
+            alias=scenario.alias,
+            installation_code=installation_code,
+        )
+
+    _assert_robots_require_authentication(armada)
+    armada.log_startup_info()
+    return armada
+
+
+@pytest.fixture
+def armada_with_robot_roster(armada_without_robots: Armada):
+    """Factory yielding an armada with an arbitrary roster of ISAR robots.
+
+    Tests call it with a list of ``RobotScenario``. Every robot shares one stack,
+    so several related scenarios can run in parallel for the price of one armada
+    plus one container each.
+
+    All robots default to ``should_start_at_home=True`` so they boot straight into
+    ISAR's ``Home`` state. Without it the bootstrap return-home cycle races the
+    test, and for robots configured to fail return-home it lands them in
+    ``InterventionNeeded`` before a mission can be dispatched.
+    """
+    with ExitStack() as stack:
+
+        def _start(roster) -> Armada:
+            return _start_robot_roster(armada_without_robots, roster, stack)
+
+        yield _start
+
+
 @pytest.fixture
 def armada_with_multiple_robots(armada_without_robots: Armada):
-    """Spin up four ISAR robot containers with different mission/return-home
-    behaviour to test parallel multi-robot scenarios.
-
-    All robots are configured with ``ROBOT_SHOULD_START_AT_HOME=true`` so they
-    boot directly into ISAR's ``Home`` state, skipping the bootstrap
-    return-home cycle. Without this, robots configured to fail return-home
-    would race the test: the boot return-home would fail and put them into
-    ``InterventionNeeded`` before the test had a chance to schedule the echo
-    mission, making the mission un-dispatchable.
+    """Four robots covering the mission/return-home outcome matrix.
 
     Robot configurations (mission and post-mission return-home outcomes):
         1. MissionOkThenHome – mission succeeds, returns home successfully
@@ -524,81 +627,31 @@ def armada_with_multiple_robots(armada_without_robots: Armada):
         3. MissionFailThenHome – mission fails, returns home successfully
         4. MissionFailThenLost – mission fails, fails to return home
     """
-    armada: Armada = armada_without_robots
-    blob_conn_data, blob_conn_metadata = _blob_connection_strings(armada)
-
-    robot_configs = [
-        {
-            "name": "MissionOkThenHome",
-            "alias": "isar_mission_ok_then_home",
-            "should_fail_normal_task": False,
-            "should_fail_return_home": False,
-            "should_start_at_home": True,
-        },
-        {
-            "name": "MissionOkThenLost",
-            "alias": "isar_mission_ok_then_lost",
-            "should_fail_normal_task": False,
-            "should_fail_return_home": True,
-            "should_start_at_home": True,
-        },
-        {
-            "name": "MissionFailThenHome",
-            "alias": "isar_mission_fail_then_home",
-            "should_fail_normal_task": True,
-            "should_fail_return_home": False,
-            "should_start_at_home": True,
-        },
-        {
-            "name": "MissionFailThenLost",
-            "alias": "isar_mission_fail_then_lost",
-            "should_fail_normal_task": True,
-            "should_fail_return_home": True,
-            "should_start_at_home": True,
-        },
+    roster = [
+        RobotScenario(
+            name="MissionOkThenHome",
+            alias="isar_mission_ok_then_home",
+        ),
+        RobotScenario(
+            name="MissionOkThenLost",
+            alias="isar_mission_ok_then_lost",
+            should_fail_return_home=True,
+        ),
+        RobotScenario(
+            name="MissionFailThenHome",
+            alias="isar_mission_fail_then_home",
+            should_fail_normal_task=True,
+        ),
+        RobotScenario(
+            name="MissionFailThenLost",
+            alias="isar_mission_fail_then_lost",
+            should_fail_normal_task=True,
+            should_fail_return_home=True,
+        ),
     ]
 
     with ExitStack() as stack:
-        for cfg in robot_configs:
-            container = stack.enter_context(
-                create_isar_robot_container(
-                    network=armada.network,
-                    openid_config_url=armada.keycloak.internal_openid_config_url,
-                    image=settings.ISAR_ROBOT_IMAGE,
-                    name=cfg["name"],
-                    port=settings.ISAR_ROBOT_PORT,
-                    alias=cfg["alias"],
-                    blob_storage_connection_string_data=blob_conn_data,
-                    blob_storage_connection_string_metadata=blob_conn_metadata,
-                    should_fail_normal_task=cfg["should_fail_normal_task"],
-                    should_fail_return_home=cfg["should_fail_return_home"],
-                    return_home_retry_limit=1,
-                    should_start_at_home=cfg["should_start_at_home"],
-                    test_id=armada.test_id,
-                )
-            )
-
-            wait_for_port_mapping_to_be_available(
-                container=container, port=settings.ISAR_ROBOT_PORT
-            )
-
-            robot_id, installation_code = setup_robot_in_flotilla(
-                backend_url=armada.flotilla_backend.backend_url,
-                robot_name=cfg["name"],
-            )
-
-            armada.robots[cfg["name"]] = IsarRobot(
-                container=container,
-                name=cfg["name"],
-                robot_id=robot_id,
-                port=settings.ISAR_ROBOT_PORT,
-                alias=cfg["alias"],
-                installation_code=installation_code,
-            )
-
-        _assert_robots_require_authentication(armada)
-        armada.log_startup_info()
-        yield armada
+        yield _start_robot_roster(armada_without_robots, roster, stack)
 
 
 def wait_for_port_mapping_to_be_available(
