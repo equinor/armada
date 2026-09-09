@@ -32,12 +32,8 @@ def test_simple_mission_with_three_tags_is_successful(
 ) -> None:
     armada: Armada = armada_with_single_successful_robot
     robot_name, robot = next(iter(armada.robots.items()))
-    mission_payload: Dict = get_dummy_mission_payload_with_installation(
-        robot.installation_code
-    )
-    mission: Dict = create_mission(
-        backend_url=armada.flotilla_backend.backend_url, payload=mission_payload
-    )
+    mission_payload: Dict = get_dummy_mission_payload_with_installation(robot.installation_code)
+    mission: Dict = create_mission(backend_url=armada.flotilla_backend.backend_url, payload=mission_payload)
     mission_run: Dict = schedule_mission(
         backend_url=armada.flotilla_backend.backend_url,
         robot_id=robot.robot_id,
@@ -48,7 +44,7 @@ def test_simple_mission_with_three_tags_is_successful(
     logger.info(
         f"Scheduled mission {mission['id']} with id {mission_run['id']} "
         f"on robot {robot_name}"
-    )
+        )
 
     _ = wait_for_mission_run_status(
         backend_url=armada.flotilla_backend.backend_url,
