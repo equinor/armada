@@ -55,7 +55,7 @@ jobs:
           ref: ${{ inputs.pr_head_sha || inputs.checkout_ref }}
 
       - name: Azure login (OIDC / federated credential)
-        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 #v2.3.0
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
         with:
           # vars.CLIENTID is an environment-scoped variable resolved via the
           # job's environment: ${{ inputs.environment }} above. It must be
