@@ -9,17 +9,9 @@ updates:
       - dependency-type: all
     open-pull-requests-limit: 5
     groups:
-      python-patch-minor:
+      python-dependencies:
         patterns:
           - "*"
-        update-types:
-          - patch
-          - minor
-      python-major:
-        patterns:
-          - "*"
-        update-types:
-          - major
 
   - package-ecosystem: github-actions
     directory: /
