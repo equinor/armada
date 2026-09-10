@@ -8,7 +8,6 @@ from robotics_integration_tests.utilities.blob_storage import (
     wait_until_all_expected_files_uploaded,
 )
 from robotics_integration_tests.utilities.flotilla_backend_api import (
-    DUMMY_MISSION_TASKS_REQUESTING_ANALYSIS,
     create_mission,
     get_dummy_mission_payload_with_installation,
     schedule_mission,
@@ -87,5 +86,5 @@ def test_simple_mission_with_three_tags_is_successful(
     wait_for_sara_log_count(
         container=armada.sara.container,
         log_message=SARA_ANALYSIS_TRIGGER_FAILED_LOG,
-        expected_count=DUMMY_MISSION_TASKS_REQUESTING_ANALYSIS,
+        expected_count=len(mission_run.get("tasks")),
     )

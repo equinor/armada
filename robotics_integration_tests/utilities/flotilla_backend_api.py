@@ -19,7 +19,6 @@ from robotics_integration_tests.utilities.authentication import (
 # the anonymizer.
 DUMMY_MISSION_ANALYSIS_TYPE = "Fencilla"
 # Number of tasks in the dummy mission that request an analysis.
-DUMMY_MISSION_TASKS_REQUESTING_ANALYSIS = 2
 
 
 def _add_headers() -> Dict[str, str]:
