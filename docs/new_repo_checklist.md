@@ -284,7 +284,9 @@ Inventory **all** Python projects, including nested tools, examples, and test pr
 
 Dependabot natively applies a **three-day cooldown to version updates**, even without a `cooldown` setting; security updates are not delayed by this default. An eligible release is picked up on the next scheduled run after its cooldown. See the [Dependabot cooldown reference](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference#cooldown-).
 
-Remove the repository's obsolete scheduled updater caller when enabling the replacement. Do not remove an Armada reusable helper until all current callers have migrated and merged: `compile_python_requirements_and_create_pr.yml` is still used at `@main` by `sara-sap`, `isar-taurob-for-open-source`, and `alitra`, and `npm_dependency_update_and_create_pr.yml` is still used by `pointilla_maps`. Close old updater PRs and delete their branches only **after the replacement configuration has merged**.
+Remove the repository's obsolete scheduled updater caller when enabling the replacement. Do not remove an Armada reusable helper until all active callers have migrated and merged; verify live default-branch workflows as well as code search results, which can lag behind merges. The Python helper `compile_python_requirements_and_create_pr.yml` has been retired after its remaining active callers (`sara-sap`, `isar-taurob-for-open-source`, and `alitra`) migrated to native Dependabot. The retained reference in archived `isar-anymal-archived-2` is intentionally exempt; do not modify archived repositories.
+
+Keep `npm_dependency_update_and_create_pr.yml`: it is still used by `pointilla_maps`. Close old updater PRs and delete their branches only **after the replacement configuration has merged**.
 
 **Verify:**
 ```bash
