@@ -10,6 +10,11 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
     wait_for_mission_run_status,
     wait_for_robot_status,
 )
+from robotics_integration_tests.utilities.signalr_client import (
+    MISSION_RUN_UPDATED,
+    mission_run_reached,
+    wait_for_signalr_event,
+)
 
 
 def test_simple_mission_with_three_tags_is_unsuccessful(
@@ -35,6 +40,14 @@ def test_simple_mission_with_three_tags_is_unsuccessful(
         backend_url=armada.flotilla_backend.backend_url,
         mission_run_id=mission_run_id,
         expected_status="Failed",
+    )
+
+    # A failure is the case an operator most needs to see without reloading, so
+    # assert the hub carried it and not just that the database recorded it.
+    wait_for_signalr_event(
+        listener=armada.signalr_listener,
+        label=MISSION_RUN_UPDATED,
+        predicate=mission_run_reached(mission_run_id, "Failed"),
     )
 
     _ = wait_for_robot_status(
