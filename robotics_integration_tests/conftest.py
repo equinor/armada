@@ -86,6 +86,7 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
 from robotics_integration_tests.utilities.sara_backend_api import (
     wait_for_sara_to_be_responsive,
 )
+from robotics_integration_tests.utilities.signalr_client import SignalRListener
 
 
 def _pull_latest_images() -> None:
@@ -402,6 +403,20 @@ def sara(
 
 
 @pytest.fixture
+def signalr_listener(flotilla_backend: FlotillaBackend):
+    """A hub connection standing in for an operator's browser.
+
+    Started before any mission is scheduled so that no event is missed: the hub
+    has no replay, and anything emitted before the connection opens is gone.
+    """
+    listener = SignalRListener(backend_url=flotilla_backend.backend_url).start()
+    try:
+        yield listener
+    finally:
+        listener.stop()
+
+
+@pytest.fixture
 def armada_without_robots(
     network: Network,
     test_id: str,
@@ -414,6 +429,7 @@ def armada_without_robots(
     armada_storage: ArmadaStorage,
     teams_webhook_receiver: TeamsWebhookReceiver,
     mqtt_credentials: MqttCredentials,
+    signalr_listener: SignalRListener,
 ):
     armada: Armada = Armada()
 
@@ -428,6 +444,7 @@ def armada_without_robots(
     armada.flotilla_backend = flotilla_backend
     armada.teams_webhook_receiver = teams_webhook_receiver
     armada.mqtt_credentials = mqtt_credentials
+    armada.signalr_listener = signalr_listener
 
     yield armada
 

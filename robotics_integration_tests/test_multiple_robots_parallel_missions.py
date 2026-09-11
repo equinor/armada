@@ -21,6 +21,11 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
     wait_for_all_mission_run_statuses,
     wait_for_all_robot_statuses,
 )
+from robotics_integration_tests.utilities.signalr_client import (
+    MISSION_RUN_UPDATED,
+    mission_run_reached,
+    wait_for_signalr_event,
+)
 
 
 def test_multiple_robots_with_different_outcomes(
@@ -98,6 +103,22 @@ def test_multiple_robots_with_different_outcomes(
             for name, exp in robot_expectations.items()
         },
     )
+
+    # One hub event per mission run, carrying that run's own terminal status.
+    # With four robots reporting concurrently this is where a broadcast that
+    # goes to the wrong group, or only to the first robot, would show up. The
+    # events are already buffered by now, so this costs nothing.
+    for name, exp in robot_expectations.items():
+        wait_for_signalr_event(
+            listener=armada.signalr_listener,
+            label=MISSION_RUN_UPDATED,
+            predicate=mission_run_reached(
+                mission_runs[name]["id"], exp["mission_status"]
+            ),
+        )
+        logger.info(
+            f"Hub reported {exp['mission_status']} for {name}"
+        )
 
     # All robots share the same installation and blob container. The blob
     # folder path contains the mission run ID, so we can verify per-robot

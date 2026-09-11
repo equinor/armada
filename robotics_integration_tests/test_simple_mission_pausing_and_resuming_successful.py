@@ -21,6 +21,11 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
     wait_for_robot_status,
     wait_for_second_task_status_of_mission_run,
 )
+from robotics_integration_tests.utilities.signalr_client import (
+    MISSION_RUN_UPDATED,
+    mission_run_reached,
+    wait_for_signalr_event,
+)
 
 
 def test_simple_mission_pausing_and_resuming_successfully(
@@ -72,6 +77,14 @@ def test_simple_mission_pausing_and_resuming_successfully(
         expected_status="Paused",
     )
 
+    # Pausing is operator-initiated, so a UI that does not reflect it promptly
+    # is the case people notice first.
+    wait_for_signalr_event(
+        listener=armada.signalr_listener,
+        label=MISSION_RUN_UPDATED,
+        predicate=mission_run_reached(mission_run_id, "Paused"),
+    )
+
     resume_mission(
         backend_url=armada.flotilla_backend.backend_url, robot_id=robot.robot_id
     )
@@ -87,6 +100,12 @@ def test_simple_mission_pausing_and_resuming_successfully(
         backend_url=armada.flotilla_backend.backend_url,
         mission_run_id=mission_run_id,
         expected_status="Successful",
+    )
+
+    wait_for_signalr_event(
+        listener=armada.signalr_listener,
+        label=MISSION_RUN_UPDATED,
+        predicate=mission_run_reached(mission_run_id, "Successful"),
     )
 
     wait_until_all_expected_files_uploaded(
