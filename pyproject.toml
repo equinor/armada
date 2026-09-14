@@ -16,7 +16,9 @@ dependencies = [
     "loguru",
     "python-dotenv",
     "requests",
-    "cryptography"
+    "cryptography",
+    "pysignalr",
+    "paho-mqtt"
 ]
 
 [project.optional-dependencies]

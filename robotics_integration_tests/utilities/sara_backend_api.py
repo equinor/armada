@@ -1,3 +1,4 @@
+import re
 import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Tuple
@@ -54,6 +55,36 @@ def wait_for_sara_to_be_responsive(sara_url: str, timeout: int = 60) -> None:
         if len(analysis_groups) >= 0:
             logger.info("Sara is responsive")
             return
+
+
+def wait_for_sara_inspection_ids(
+    container: StreamLoggingDockerContainer, expected_count: int, timeout: int = 60
+) -> List[str]:
+    """Poll SARA's logs until it has ingested *expected_count* inspection records,
+    and return the InspectionIds it assigned them.
+
+    Read from the logs rather than from ``GET /api/inspection-record``, which
+    answers 500 in this environment: the DTO resolves a visualization blob per
+    record, and no analysis has produced one. The value is the same either way,
+    and it is the one SARA later puts in the ``inspection_ids`` of a
+    sara/analysis_result_available message -- so this is what Flotilla will
+    really be asked to resolve, rather than something the test made up.
+    """
+    pattern = re.compile(r"Created inspection record with InspectionId: (\S+)")
+    deadline = time.time() + timeout
+    inspection_ids: List[str] = []
+
+    while time.time() < deadline:
+        inspection_ids = pattern.findall(_logs_to_text(container.get_logs()))
+        if len(inspection_ids) >= expected_count:
+            logger.info(f"SARA created inspection records: {inspection_ids}")
+            return inspection_ids
+        time.sleep(1)
+
+    raise TimeoutError(
+        f"SARA logged {len(inspection_ids)} inspection records within {timeout}s, "
+        f"expected {expected_count}"
+    )
 
 
 def _logs_to_text(logs: Any) -> str:
