@@ -60,4 +60,17 @@ def create_sara_container(
         )
     )
 
+    for workflow in (
+        "anonymizer",
+        "rain-drop",
+        "fencilla",
+        "cloe",
+        "thermal-reading",
+        "copy-raw-to-visualized",
+    ):
+        container.with_env(
+            f"Analysis__Workflows__{workflow}__OutputStorageAccount",
+            settings.AZURITE_ACCOUNT,
+        )
+
     return container
