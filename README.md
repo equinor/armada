@@ -106,6 +106,13 @@ deploy workflow that publishes the images has finished. It needs no repository s
 suite mints its own MQTT credentials per run, authenticates against a local Keycloak realm, and
 pulls the service images from public ghcr.io packages.
 
+SARA's container fixture explicitly sets every built-in analysis workflow's
+`OutputStorageAccount` to `AZURITE_ACCOUNT`, using the same local blob connection as raw
+storage. Output blob containers inherit the input installation container (such as `hua`),
+which the storage fixture creates in Azurite. SARA's startup validation remains enabled;
+new built-in workflows must also be configured in
+`robotics_integration_tests/custom_containers/sara.py`.
+
 The input `lane` determines the image tag used for the internally developed packages like
 Flotilla and ISAR. `lane=dev` pulls `ghcr.io/equinor/<image>:dev`, the newest development images
 corresponding to the newest push to main; `lane=latest` pulls `ghcr.io/equinor/<image>:latest`,
@@ -137,6 +144,12 @@ You may now run the tests with
 
 ```bash
 uv run pytest -s .
+```
+
+The fixture regression tests need no Docker daemon or image pulls:
+
+```bash
+uv run --frozen pytest robotics_integration_tests/unit
 ```
 
 To run the dev lane, the same combination CI uses for a push to `main`:
