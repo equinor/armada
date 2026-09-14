@@ -107,7 +107,11 @@ def create_keycloak_container(
     alias: str = "keycloak",
     test_id: str = "",
 ) -> tuple[StreamLoggingDockerContainer, Keycloak]:
-    """Start Keycloak with the robotics realm imported."""
+    """Start Keycloak with the robotics realm imported.
+
+    Mounts the realm from the working tree rather than pulling the published
+    image, so a change to the realm is tested against the change.
+    """
     container: StreamLoggingDockerContainer = (
         StreamLoggingDockerContainer(image=settings.KEYCLOAK_IMAGE)
         .with_name(f"{name}-{test_id}")
