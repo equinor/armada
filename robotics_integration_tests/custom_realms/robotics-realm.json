@@ -117,6 +117,98 @@
       ]
     },
     {
+      "name": "profile",
+      "description": "Spelled out because declaring clientScopes in a realm import suppresses every built-in scope.",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "username",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "username",
+            "claim.name": "preferred_username",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "full name",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-full-name-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "given name",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "firstName",
+            "claim.name": "given_name",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "family name",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "lastName",
+            "claim.name": "family_name",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "email",
+            "claim.name": "email",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "email verified",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "emailVerified",
+            "claim.name": "email_verified",
+            "jsonType.label": "boolean",
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
       "name": "flotilla-api",
       "description": "Requests an access token whose aud is flotilla-test",
       "protocol": "openid-connect",
@@ -298,6 +390,63 @@
         "sara-api",
         "pointilla-api"
       ]
+    },
+    {
+      "clientId": "flotilla-frontend",
+      "name": "Flotilla frontend (browser)",
+      "description": "Public SPA client for the Tilt stack. entra-compat is a default scope, not optional: without its claims a token fails the role check rather than degrading.",
+      "enabled": true,
+      "publicClient": true,
+      "serviceAccountsEnabled": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "http://localhost:3001/*",
+        "http://localhost:5193/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3001",
+        "http://localhost:5193"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "+"
+      },
+      "defaultClientScopes": [
+        "profile",
+        "entra-compat"
+      ],
+      "optionalClientScopes": [
+        "flotilla-api",
+        "sara-api"
+      ]
+    },
+    {
+      "clientId": "sara-frontend",
+      "name": "SARA frontend (browser)",
+      "description": "Public SPA client for the Tilt stack. See flotilla-frontend for why entra-compat is a default scope.",
+      "enabled": true,
+      "publicClient": true,
+      "serviceAccountsEnabled": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "http://localhost:8099/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8099"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "+"
+      },
+      "defaultClientScopes": [
+        "profile",
+        "entra-compat"
+      ],
+      "optionalClientScopes": [
+        "sara-api"
+      ]
     }
   ],
   "users": [
@@ -354,6 +503,62 @@
         "Role.User.NLS",
         "Mission.Control"
       ]
+    },
+    {
+      "username": "dev-admin",
+      "enabled": true,
+      "email": "dev-admin@example.com",
+      "emailVerified": true,
+      "firstName": "Dev",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dev",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Role.Admin",
+        "Role.User.HUA",
+        "Role.User.KAA",
+        "Role.User.NLS",
+        "Mission.Control"
+      ]
+    },
+    {
+      "username": "dev-hua",
+      "enabled": true,
+      "email": "dev-hua@example.com",
+      "emailVerified": true,
+      "firstName": "Dev",
+      "lastName": "Huldra",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dev",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Role.User.HUA"
+      ]
+    },
+    {
+      "username": "dev-noroles",
+      "enabled": true,
+      "email": "dev-noroles@example.com",
+      "emailVerified": true,
+      "firstName": "Dev",
+      "lastName": "NoRoles",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dev",
+          "temporary": false
+        }
+      ],
+      "realmRoles": []
     }
   ]
 }

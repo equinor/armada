@@ -56,6 +56,41 @@ which ISAR uses: a hardcoded `ver`, a hardcoded `nbf` (Keycloak emits none, the 
 it) and a flat `roles` claim, since the default nested `realm_access.roles` maps to neither
 ISAR's `User.roles` nor .NET's `ClaimTypes.Role`.
 
+Declaring `clientScopes` in a realm import **replaces** Keycloak's built-in scopes rather than
+extending them, so `profile` is spelled out in the realm alongside the API scopes. Without it a
+browser login requesting the customary `openid profile` is rejected outright with
+`invalid_scope`, and no `preferred_username`, `name` or `email` claim is issued.
+
+### Browser clients and dev users
+The clients above are machine-to-machine. Two public clients exist for the local Tilt stacks,
+where a human signs in through a browser: `flotilla-frontend` and `sara-frontend`. Both are
+public with the standard flow and PKCE `S256`, take `profile` and `entra-compat` as default
+scopes, and request an API scope — still exactly one — as an optional scope.
+
+`entra-compat` is deliberately a *default* scope on them: a token missing `roles`, `oid`, `tid`
+and `ver` does not degrade, it fails the services' role checks outright.
+
+The seeded users cover the role matrix that the service accounts cannot, because a browser login
+picks a user rather than a client. All use the password `dev`:
+
+| User | Roles | Exercises |
+| --- | --- | --- |
+| `dev-admin` | every role | the ordinary case |
+| `dev-hua` | `Role.User.HUA` only | per-installation scoping, which a full-access user hides |
+| `dev-noroles` | none | the 403 paths |
+
+### The realm as an image
+`robotics_integration_tests/custom_images/keycloak/Dockerfile` bakes the realm into
+`ghcr.io/equinor/robotics-keycloak`, published by
+[publish_keycloak_image.yml](./.github/workflows/publish_keycloak_image.yml) as `:dev`, `:latest`
+and a short-sha tag. Consumers pin a tag instead of checking this repository out, which is what
+lets the private robotics repository and the public flotilla and sara ones share one realm.
+
+Mounting a directory over `/opt/keycloak/data/import` replaces the baked-in realm, so it can be
+iterated on locally without republishing. The integration tests always do this: armada owns the
+realm, and a pull request that changes it must be tested against the change rather than against
+the last published build.
+
 ## Run the integration tests through remote workflow call
 To run the integration tests in a remote repository, this [workflow](./.github/workflows/run_integration_tests.yml) has been set up. 
 

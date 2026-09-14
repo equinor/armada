@@ -1,0 +1,74 @@
+name: Publish Keycloak image
+
+# Consumers reference this image instead of checking the repository out.
+#
+# GHCR packages are private on first publish; the visibility has to be
+# flipped to public once, by hand, in the package settings.
+
+concurrency:
+  group: publish-keycloak-image
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+on:
+  push:
+    branches:
+      - "main"
+    paths:
+      - "robotics_integration_tests/custom_realms/robotics-realm.json"
+      - "robotics_integration_tests/custom_images/keycloak/Dockerfile"
+      - ".github/workflows/publish_keycloak_image.yml"
+  workflow_dispatch:
+
+jobs:
+  get-short-sha:
+    outputs:
+      tag: ${{ steps.get-tag.outputs.tag }}
+    runs-on: ubuntu-latest
+    steps:
+      - id: get-tag
+        run: |
+          SHA_SHORT=$(echo ${{ github.sha }} | cut -c1-8)
+          echo "tag=$SHA_SHORT" >> "$GITHUB_OUTPUT"
+
+  publish-dev:
+    name: Publish keycloak image to ghcr
+    needs: get-short-sha
+    uses: ./.github/workflows/build_and_publish_docker_image_to_container_registry.yml
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    with:
+      registry: ghcr.io
+      image_name: equinor/robotics-keycloak
+      tag: ${{ needs.get-short-sha.outputs.tag }}
+      secondary_tag: dev
+      path_to_dockerfile: robotics_integration_tests/custom_images/keycloak/Dockerfile
+      path_to_context: .
+    secrets:
+      registry_username: ${{ github.actor }}
+      registry_password: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-latest:
+    # A separate job only because the reusable workflow applies at most two
+    # tags. Runs after publish-dev, so it hits the build cache.
+    name: Tag the same image as latest
+    needs: [get-short-sha, publish-dev]
+    uses: ./.github/workflows/build_and_publish_docker_image_to_container_registry.yml
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    with:
+      registry: ghcr.io
+      image_name: equinor/robotics-keycloak
+      tag: latest
+      path_to_dockerfile: robotics_integration_tests/custom_images/keycloak/Dockerfile
+      path_to_context: .
+    secrets:
+      registry_username: ${{ github.actor }}
+      registry_password: ${{ secrets.GITHUB_TOKEN }}
