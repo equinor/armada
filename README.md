@@ -137,13 +137,18 @@ with a dedicated migration identity for every deployed CI migration. There is no
 legacy/password branch or authentication-mode input. Merging changes all callers
 using `@main`: old releases and missing environment settings will fail closed.
 Before merge/cutover, every affected environment needs its identity/federation,
-database role/ownership/DDL permissions, variables, runner connectivity and a
-supported application ref ready. This is not an independently safe prerequisite merge.
+database role/ownership/DDL permissions, identity variables, runner connectivity and a
+supported application ref with environment-specific migration settings ready.
+This is not an independently safe prerequisite merge.
 
-The selected GitHub Environment must define
-`MIGRATION_CLIENT_ID`, `MIGRATION_POSTGRES_HOST`, `MIGRATION_POSTGRES_DATABASE` and
-`MIGRATION_POSTGRES_USERNAME`, alongside the existing `AZURE_TENANT_ID` and
+The selected GitHub Environment must define `MIGRATION_CLIENT_ID`, `AZURE_TENANT_ID` and
 `AspNetEnvironment`. The existing `azure_subscription_id` input is also required.
+Database host, database name and username belong in the checked-out application's
+environment-specific appsettings under `Migrations:Postgres:Host`,
+`Migrations:Postgres:Database` and `Migrations:Postgres:Username`; the workflow does
+not require or override them through GitHub variables. `AspNetEnvironment` must
+select the intended application configuration, whose factory validates these
+settings before database access.
 The PostgreSQL username is the provisioned database role, not an inferred client ID
 or identity display name. Provisioning, database ownership/DDL permissions and
 runner connectivity must be established separately. No runtime `CLIENTID`, Key
@@ -157,9 +162,8 @@ it attests release capability, not runtime enforcement. Unsupported old releases
 fail before Azure login, build or EF execution; there is no compatibility fallback.
 
 The workflow logs in with `MIGRATION_CLIENT_ID`, then invokes EF without
-`--verbose`, passing `Migrations__AuthenticationMode=AzureCli` and
-`Migrations__Postgres__Host`, `Migrations__Postgres__Database`,
-`Migrations__Postgres__Username`, plus `AZURE_TENANT_ID`. The supported factory must
+`--verbose`, passing `Migrations__AuthenticationMode=AzureCli`,
+`AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and `ASPNETCORE_ENVIRONMENT`. The supported factory must
 use explicit `AzureCliCredential` for
 `https://ossrdbms-aad.database.windows.net/.default`, manage token lifetime and TLS,
 and fail on invalid configuration or authentication without reading Key Vault

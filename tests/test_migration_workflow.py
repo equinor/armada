@@ -14,9 +14,6 @@ WORKFLOW = (
 MARKER = b"azure-cli-postgresql-v1\n"
 SETTINGS = {
     "MIGRATION_CLIENT_ID": "migration-client",
-    "MIGRATION_POSTGRES_HOST": "example.postgres.database.azure.com",
-    "MIGRATION_POSTGRES_DATABASE": "example",
-    "MIGRATION_POSTGRES_USERNAME": "migration-role",
     "AZURE_TENANT_ID": "tenant",
     "AZURE_SUBSCRIPTION_ID": "subscription",
 }
@@ -153,12 +150,8 @@ class MigrationWorkflowTests(unittest.TestCase):
         self.assertIn(
             "ASPNETCORE_ENVIRONMENT: ${{ vars.AspNetEnvironment }}", update
         )
-        for field in ("Host", "Database", "Username"):
-            self.assertIn(
-                f"Migrations__Postgres__{field}: "
-                "${{ vars.MIGRATION_POSTGRES_" + field.upper() + " }}",
-                update,
-            )
+        self.assertNotIn("MIGRATION_POSTGRES_", WORKFLOW)
+        self.assertNotIn("Migrations__Postgres__", WORKFLOW)
         for setting in SETTINGS:
             expression = (
                 "${{ inputs.azure_subscription_id }}"

@@ -58,15 +58,10 @@ jobs:
         shell: bash
         env:
           MIGRATION_CLIENT_ID: ${{ vars.MIGRATION_CLIENT_ID }}
-          MIGRATION_POSTGRES_HOST: ${{ vars.MIGRATION_POSTGRES_HOST }}
-          MIGRATION_POSTGRES_DATABASE: ${{ vars.MIGRATION_POSTGRES_DATABASE }}
-          MIGRATION_POSTGRES_USERNAME: ${{ vars.MIGRATION_POSTGRES_USERNAME }}
           AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
           AZURE_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
         run: |
-          for setting in MIGRATION_CLIENT_ID MIGRATION_POSTGRES_HOST \
-            MIGRATION_POSTGRES_DATABASE MIGRATION_POSTGRES_USERNAME \
-            AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+          for setting in MIGRATION_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
             value="${!setting}"
             if [[ -z "${value//[[:space:]]/}" ]]; then
               echo "::error::Required migration setting is missing: $setting"
@@ -105,6 +100,3 @@ jobs:
           AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
           ASPNETCORE_ENVIRONMENT: ${{ vars.AspNetEnvironment }}
           Migrations__AuthenticationMode: AzureCli
-          Migrations__Postgres__Host: ${{ vars.MIGRATION_POSTGRES_HOST }}
-          Migrations__Postgres__Database: ${{ vars.MIGRATION_POSTGRES_DATABASE }}
-          Migrations__Postgres__Username: ${{ vars.MIGRATION_POSTGRES_USERNAME }}
