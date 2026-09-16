@@ -1,3 +1,4 @@
+import ast
 import os
 from pathlib import Path
 import subprocess
@@ -33,7 +34,7 @@ SCRIPT = textwrap.dedent(GATE.split("        run: |\n", 1)[1])
 
 
 class MigrationWorkflowTests(unittest.TestCase):
-    def run_gate(self, mode="azure_cli", marker=MARKER, settings=None):
+    def run_gate(self, marker=MARKER, settings=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             if marker is not None:
@@ -49,7 +50,6 @@ class MigrationWorkflowTests(unittest.TestCase):
                 cwd=root,
                 env={
                     "PATH": os.defpath,
-                    "MIGRATION_AUTH_MODE": mode,
                     **(SETTINGS if settings is None else settings),
                 },
                 text=True,
@@ -61,21 +61,6 @@ class MigrationWorkflowTests(unittest.TestCase):
         result, continued = self.run_gate()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(continued)
-
-    def test_legacy_does_not_require_marker_or_migration_settings(self):
-        for marker in (None, MARKER, b"unsupported\n"):
-            with self.subTest(marker=marker):
-                result, continued = self.run_gate("legacy", marker, {})
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertTrue(continued)
-
-    def test_strict_modes(self):
-        for mode in ("", "Azure_Cli", "LEGACY", "azure_cli ", "password"):
-            with self.subTest(mode=mode):
-                result, continued = self.run_gate(mode)
-                self.assertNotEqual(result.returncode, 0)
-                self.assertIn("migration_auth_mode must be", result.stdout)
-                self.assertFalse(continued)
 
     def test_old_or_malformed_contract_stops_before_following_steps(self):
         for marker in (
@@ -123,54 +108,39 @@ class MigrationWorkflowTests(unittest.TestCase):
         position = WORKFLOW.index("      - name: Validate migration")
         self.assertLess(WORKFLOW.index("      - name: Checkout\n"), position)
         for name in (
-            "Azure login (OIDC / federated credential)",
             "Azure login with migration identity",
             "Set up .NET",
             "Build project and dependencies",
             "Install dotnet ef tool",
-            "Update database",
             "Update database with migration identity",
         ):
             self.assertLess(position, WORKFLOW.index(f"      - name: {name}\n"))
             self.assertNotIn("always()", step(name))
         self.assertNotIn("continue-on-error", WORKFLOW)
+        self.assertNotIn("        if:", WORKFLOW)
         self.assertNotIn("dotnet", SCRIPT)
         self.assertNotIn("az ", SCRIPT)
         self.assertNotIn("${{", SCRIPT)
         self.assertIn("working-directory: ${{ inputs.working_directory }}", WORKFLOW)
 
-    def test_default_and_legacy_contract_are_unchanged(self):
-        self.assertIn('        default: "legacy"', WORKFLOW)
+    def test_checkout_contract_is_unchanged_and_legacy_is_removed(self):
         self.assertIn('        default: "main"', WORKFLOW)
         self.assertIn("ref: ${{ inputs.pr_head_sha || inputs.checkout_ref }}", WORKFLOW)
         self.assertIn("environment: ${{ inputs.environment }}", WORKFLOW)
-        login = step("Azure login (OIDC / federated credential)")
-        update = step("Update database")
-        for source in (login, update):
-            self.assertIn("if: ${{ inputs.migration_auth_mode == 'legacy' }}", source)
-            self.assertNotIn("MIGRATION_CLIENT_ID", source)
-        for value in (
-            "client-id: ${{ vars.CLIENTID }}",
-            "tenant-id: ${{ vars.AZURE_TENANT_ID }}",
-            "subscription-id: ${{ inputs.azure_subscription_id }}",
+        for removed in (
+            "migration_auth_mode",
+            "vars.CLIENTID",
+            "ConnectionString",
+            "Database__AllowedAuthMethods",
+            "--verbose",
         ):
-            self.assertIn(value, login)
-        for value in (
-            "run: dotnet ef database update --no-build --verbose",
-            "AZURE_CLIENT_ID: ${{ vars.CLIENTID }}",
-            "AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}",
-            "ASPNETCORE_ENVIRONMENT: ${{ vars.AspNetEnvironment }}",
-            "Database__AllowedAuthMethods__0: ConnectionString",
-        ):
-            self.assertIn(value, update)
-        self.assertNotIn("Migrations__", update)
+            self.assertNotIn(removed, WORKFLOW)
+        self.assertEqual(WORKFLOW.count("uses: azure/login@"), 1)
+        self.assertEqual(WORKFLOW.count("run: dotnet ef database update"), 1)
 
     def test_azure_cli_mapping(self):
         login = step("Azure login with migration identity")
         update = step("Update database with migration identity")
-        for source in (login, update):
-            self.assertIn("if: ${{ inputs.migration_auth_mode == 'azure_cli' }}", source)
-            self.assertNotIn("vars.CLIENTID", source)
         self.assertIn("client-id: ${{ vars.MIGRATION_CLIENT_ID }}", login)
         self.assertIn("tenant-id: ${{ vars.AZURE_TENANT_ID }}", login)
         self.assertIn("subscription-id: ${{ inputs.azure_subscription_id }}", login)
@@ -196,14 +166,51 @@ class MigrationWorkflowTests(unittest.TestCase):
                 else "${{ vars." + setting + " }}"
             )
             self.assertIn(f"{setting}: {expression}", GATE)
-        for name in (
-            "Azure login (OIDC / federated credential)",
-            "Azure login with migration identity",
-        ):
-            self.assertIn(
-                "uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c",
-                step(name),
-            )
+        self.assertIn(
+            "uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c", login
+        )
+
+    def test_disposable_database_paths_explicitly_use_local_password_mode(self):
+        root = Path(__file__).resolve().parents[1]
+        temporary = (
+            root / ".github/workflows/validate_dotnet_migrations_against_temp_db.yml"
+        ).read_text()
+        self.assertEqual(
+            temporary.count("Migrations__AuthenticationMode: LocalConnectionString"), 2
+        )
+        self.assertEqual(temporary.count('ASPNETCORE_ENVIRONMENT: "Development"'), 2)
+        self.assertEqual(
+            temporary.count('Database__postgresConnectionString: "Host=localhost;'), 2
+        )
+        self.assertIn("image: postgres:16", temporary)
+        self.assertNotIn("azure/login", temporary)
+        self.assertNotIn("id-token:", temporary)
+        self.assertNotIn("secrets.", temporary)
+
+        tree = ast.parse(
+            (root / "robotics_integration_tests/custom_containers/migrations_runner.py")
+            .read_text()
+        )
+        helper = next(
+            node for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "_with_design_time_database_config"
+        )
+        mappings = {
+            node.args[0].value: node.args[1]
+            for node in ast.walk(helper)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "with_env"
+        }
+        self.assertEqual(
+            mappings["Migrations__AuthenticationMode"].value, "LocalConnectionString"
+        )
+        self.assertEqual(mappings["ASPNETCORE_ENVIRONMENT"].value, "Development")
+        self.assertEqual(
+            mappings["Database__postgresConnectionString"].id,
+            "postgres_connection_string",
+        )
 
 
 if __name__ == "__main__":

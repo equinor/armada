@@ -68,6 +68,7 @@ jobs:
       - name: Check for Pending Model Changes
         working-directory: ${{ inputs.working_directory }}
         env:
+          Migrations__AuthenticationMode: LocalConnectionString
           Database__postgresConnectionString: "Host=localhost;Port=5432;Database=test_db;Username=postgres;Password=password;Include Error Detail=true"
           ASPNETCORE_ENVIRONMENT: "Development"
         run: dotnet ef migrations has-pending-model-changes
@@ -75,6 +76,7 @@ jobs:
       - name: Run migrations against temporary database
         working-directory: ${{ inputs.working_directory }}
         env:
+          Migrations__AuthenticationMode: LocalConnectionString
           Database__postgresConnectionString: "Host=localhost;Port=5432;Database=test_db;Username=postgres;Password=password;Include Error Detail=true"
           ASPNETCORE_ENVIRONMENT: "Development"
         run: |

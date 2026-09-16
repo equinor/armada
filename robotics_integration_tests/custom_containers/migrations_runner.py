@@ -74,6 +74,8 @@ def _with_design_time_database_config(
         .with_env("Database__PostgreSqlConnectionString", postgres_connection_string)
         .with_env("Database__ConnectionString", postgres_connection_string)
         .with_env("Database__AllowedAuthMethods__0", "ConnectionString")
+        .with_env("Migrations__AuthenticationMode", "LocalConnectionString")
+        .with_env("ASPNETCORE_ENVIRONMENT", "Development")
     )
 
 

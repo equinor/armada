@@ -35,11 +35,6 @@ on:
         description: "Azure subscription ID used for OIDC federated login"
         required: true
         type: string
-      migration_auth_mode:
-        description: "Migration authentication: legacy or azure_cli (requires application contract v1)"
-        required: false
-        type: string
-        default: "legacy"
 
 permissions:
   contents: read
@@ -62,7 +57,6 @@ jobs:
       - name: Validate migration authentication contract
         shell: bash
         env:
-          MIGRATION_AUTH_MODE: ${{ inputs.migration_auth_mode }}
           MIGRATION_CLIENT_ID: ${{ vars.MIGRATION_CLIENT_ID }}
           MIGRATION_POSTGRES_HOST: ${{ vars.MIGRATION_POSTGRES_HOST }}
           MIGRATION_POSTGRES_DATABASE: ${{ vars.MIGRATION_POSTGRES_DATABASE }}
@@ -70,12 +64,6 @@ jobs:
           AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
           AZURE_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
         run: |
-          case "$MIGRATION_AUTH_MODE" in
-            legacy) exit 0 ;;
-            azure_cli) ;;
-            *) echo "::error::migration_auth_mode must be legacy or azure_cli"; exit 1 ;;
-          esac
-
           for setting in MIGRATION_CLIENT_ID MIGRATION_POSTGRES_HOST \
             MIGRATION_POSTGRES_DATABASE MIGRATION_POSTGRES_USERNAME \
             AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
@@ -92,19 +80,7 @@ jobs:
             exit 1
           fi
 
-      - name: Azure login (OIDC / federated credential)
-        if: ${{ inputs.migration_auth_mode == 'legacy' }}
-        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
-        with:
-          # vars.CLIENTID is an environment-scoped variable resolved via the
-          # job's environment: ${{ inputs.environment }} above. It must be
-          # defined on the calling repo's GitHub Environment.
-          client-id: ${{ vars.CLIENTID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ inputs.azure_subscription_id }}
-
       - name: Azure login with migration identity
-        if: ${{ inputs.migration_auth_mode == 'azure_cli' }}
         uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
         with:
           client-id: ${{ vars.MIGRATION_CLIENT_ID }}
@@ -122,32 +98,7 @@ jobs:
       - name: Install dotnet ef tool
         run: dotnet tool install -g dotnet-ef --version ${{ inputs.dotnet_ef_version }}
 
-      - name: Update database
-        if: ${{ inputs.migration_auth_mode == 'legacy' }}
-        run: dotnet ef database update --no-build --verbose
-        env:
-          # azure/login above has populated ~/.azure/ on the runner. Callers
-          # must include "AzureCliBootstrap" (or another credential type that
-          # consults the Azure CLI cache) in their AzureAd:AllowedAuthMethods
-          # so that the application's credential chain can authenticate to
-          # Azure without a client secret and without a federated token file.
-          AZURE_CLIENT_ID: ${{ vars.CLIENTID }}
-          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-          ASPNETCORE_ENVIRONMENT: ${{ vars.AspNetEnvironment }}
-          # Force the design-time DbContext factory onto the Key Vault
-          # connection string. Schema migrations require DDL privileges; the
-          # runtime app-registration role typically only has CRUD grants and
-          # cannot run ALTER TABLE / CREATE TABLE on tables it does not own.
-          # The Key Vault connection string authenticates as the PostgreSQL
-          # admin (postgresuser), which retains ownership of the schema and
-          # can perform DDL safely.
-          # Apps whose Database:AllowedAuthMethods config key isn't honored
-          # (e.g. those that hard-code the design-time auth method) ignore
-          # this variable harmlessly.
-          Database__AllowedAuthMethods__0: ConnectionString
-
       - name: Update database with migration identity
-        if: ${{ inputs.migration_auth_mode == 'azure_cli' }}
         run: dotnet ef database update --no-build
         env:
           AZURE_CLIENT_ID: ${{ vars.MIGRATION_CLIENT_ID }}
