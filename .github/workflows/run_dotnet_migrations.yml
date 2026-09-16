@@ -35,6 +35,11 @@ on:
         description: "Azure subscription ID used for OIDC federated login"
         required: true
         type: string
+      migration_auth_mode:
+        description: "Migration authentication: legacy or azure_cli (requires application contract v1)"
+        required: false
+        type: string
+        default: "legacy"
 
 permissions:
   contents: read
@@ -54,13 +59,55 @@ jobs:
         with:
           ref: ${{ inputs.pr_head_sha || inputs.checkout_ref }}
 
+      - name: Validate migration authentication contract
+        shell: bash
+        env:
+          MIGRATION_AUTH_MODE: ${{ inputs.migration_auth_mode }}
+          MIGRATION_CLIENT_ID: ${{ vars.MIGRATION_CLIENT_ID }}
+          MIGRATION_POSTGRES_HOST: ${{ vars.MIGRATION_POSTGRES_HOST }}
+          MIGRATION_POSTGRES_DATABASE: ${{ vars.MIGRATION_POSTGRES_DATABASE }}
+          MIGRATION_POSTGRES_USERNAME: ${{ vars.MIGRATION_POSTGRES_USERNAME }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ inputs.azure_subscription_id }}
+        run: |
+          case "$MIGRATION_AUTH_MODE" in
+            legacy) exit 0 ;;
+            azure_cli) ;;
+            *) echo "::error::migration_auth_mode must be legacy or azure_cli"; exit 1 ;;
+          esac
+
+          for setting in MIGRATION_CLIENT_ID MIGRATION_POSTGRES_HOST \
+            MIGRATION_POSTGRES_DATABASE MIGRATION_POSTGRES_USERNAME \
+            AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+            value="${!setting}"
+            if [[ -z "${value//[[:space:]]/}" ]]; then
+              echo "::error::Required migration setting is missing: $setting"
+              exit 1
+            fi
+          done
+
+          if [[ ! -f .migration-auth-contract ]] || \
+            ! cmp -s .migration-auth-contract <(printf 'azure-cli-postgresql-v1\n'); then
+            echo "::error::Checked-out migration project must provide .migration-auth-contract containing exactly azure-cli-postgresql-v1 followed by one LF newline"
+            exit 1
+          fi
+
       - name: Azure login (OIDC / federated credential)
+        if: ${{ inputs.migration_auth_mode == 'legacy' }}
         uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
         with:
           # vars.CLIENTID is an environment-scoped variable resolved via the
           # job's environment: ${{ inputs.environment }} above. It must be
           # defined on the calling repo's GitHub Environment.
           client-id: ${{ vars.CLIENTID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ inputs.azure_subscription_id }}
+
+      - name: Azure login with migration identity
+        if: ${{ inputs.migration_auth_mode == 'azure_cli' }}
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
+        with:
+          client-id: ${{ vars.MIGRATION_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ inputs.azure_subscription_id }}
 
@@ -76,6 +123,7 @@ jobs:
         run: dotnet tool install -g dotnet-ef --version ${{ inputs.dotnet_ef_version }}
 
       - name: Update database
+        if: ${{ inputs.migration_auth_mode == 'legacy' }}
         run: dotnet ef database update --no-build --verbose
         env:
           # azure/login above has populated ~/.azure/ on the runner. Callers
@@ -97,3 +145,15 @@ jobs:
           # (e.g. those that hard-code the design-time auth method) ignore
           # this variable harmlessly.
           Database__AllowedAuthMethods__0: ConnectionString
+
+      - name: Update database with migration identity
+        if: ${{ inputs.migration_auth_mode == 'azure_cli' }}
+        run: dotnet ef database update --no-build
+        env:
+          AZURE_CLIENT_ID: ${{ vars.MIGRATION_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          ASPNETCORE_ENVIRONMENT: ${{ vars.AspNetEnvironment }}
+          Migrations__AuthenticationMode: AzureCli
+          Migrations__Postgres__Host: ${{ vars.MIGRATION_POSTGRES_HOST }}
+          Migrations__Postgres__Database: ${{ vars.MIGRATION_POSTGRES_DATABASE }}
+          Migrations__Postgres__Username: ${{ vars.MIGRATION_POSTGRES_USERNAME }}

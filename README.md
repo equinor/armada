@@ -130,6 +130,47 @@ Note that this orders the lane's tag for the repository that triggered the run o
 image producing repositories share the `:dev` and `:latest` tags, so a concurrent deploy in
 another repository can still swap a different service's image mid-run.
 
+## Shared .NET migration authentication
+
+`run_dotnet_migrations.yml` defaults to `migration_auth_mode: legacy`: existing
+`CLIENTID` login, Key Vault password behavior and checkout defaults are unchanged.
+The only other accepted value is `azure_cli`; no callers are opted in here.
+
+Before enabling it, the selected GitHub Environment must define
+`MIGRATION_CLIENT_ID`, `MIGRATION_POSTGRES_HOST`, `MIGRATION_POSTGRES_DATABASE` and
+`MIGRATION_POSTGRES_USERNAME`, alongside the existing `AZURE_TENANT_ID` and
+`AspNetEnvironment`. The existing `azure_subscription_id` input is also required.
+The PostgreSQL username is the provisioned database role, not an inferred client ID
+or identity display name. Provisioning, database ownership/DDL permissions and
+runner connectivity must be established separately; keep runtime `CLIENTID` and
+legacy vault credentials intact.
+
+Opt-in requires `.migration-auth-contract` in the checked-out `working_directory`,
+containing exactly `azure-cli-postgresql-v1` followed by **one LF newline**.
+Missing newline, CRLF, extra whitespace/newlines and unknown versions are rejected.
+This reviewed source marker must ship atomically with factory support and tests;
+it attests release capability, not runtime enforcement. Unsupported old releases
+fail before Azure login, build or EF execution. They remain usable in legacy mode.
+
+The new branch logs in with `MIGRATION_CLIENT_ID`, then invokes EF without
+`--verbose`, passing `Migrations__AuthenticationMode=AzureCli` and
+`Migrations__Postgres__Host`, `Migrations__Postgres__Database`,
+`Migrations__Postgres__Username`, plus `AZURE_TENANT_ID`. The supported factory must
+use explicit `AzureCliCredential` for
+`https://ossrdbms-aad.database.windows.net/.default`, manage token lifetime and TLS,
+and fail on invalid configuration or authentication without reading Key Vault
+passwords or falling back to runtime credential/auth-method arrays. The workflow
+does not acquire or export database tokens.
+
+Release callers must select the matching application `checkout_ref` (the default
+remains `main`; `pr_head_sha` takes precedence) and gate deployment on successful
+migrations. Temporary-database validation remains password-only and cloud-free.
+Local contract checks need only Python's standard library:
+
+```bash
+python3 -m unittest discover -s tests -p 'test_migration_workflow.py'
+```
+
 ## Local development
 Clone the repository and install dependencies with [uv](https://docs.astral.sh/uv/):
 ```bash
