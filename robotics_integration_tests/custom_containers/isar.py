@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from docker.models.networks import Network
@@ -82,7 +83,25 @@ def create_isar_robot_container(
         .with_env("ISAR_PLANT_CODE", "Huldra")
         .with_env("ISAR_PLANT_SHORT_NAME", "HUA")
         .with_env("ISAR_API_HOST_VIEWED_EXTERNALLY", alias)
+        .with_env("ISAR_API_PORT", port)
         .with_env("ISAR_ROBOT_NAME", name)
+        .with_env("ISAR_SERIAL_NUMBER", "0001")
+        .with_env("ISAR_DOCUMENTATION", "[]")
+        .with_env("ROBOT_MODEL", "Robot")
+        .with_env(
+            "CAPABILITIES",
+            json.dumps(
+                [
+                    "take_thermal_image",
+                    "take_image",
+                    "take_video",
+                    "take_thermal_video",
+                    "record_audio",
+                    "take_co2_measurement",
+                    "take_acoustic_measurement",
+                ]
+            ),
+        )
         .with_env("MISSION_SIMULATION_TIME_TO_START", 2)
         .with_env("ROBOT_MISSION_SIMULATION_TASK_FAILURE_PROBABILITY", failure_prob)
         .with_env(
