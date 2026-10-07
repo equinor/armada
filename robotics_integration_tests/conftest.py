@@ -472,7 +472,7 @@ def armada_with_single_successful_robot(armada_without_robots: Armada):
 
         robot_id, installation_code_for_robot = setup_robot_in_flotilla(
             backend_url=armada.flotilla_backend.backend_url,
-            robot_name=settings.ISAR_ROBOT_NAME,
+            robot_container=isar_robot,
         )
 
         armada.robots[settings.ISAR_ROBOT_NAME] = IsarRobot(
@@ -509,7 +509,7 @@ def armada_with_single_failing_robot(armada_without_robots: Armada):
 
         robot_id, installation_code_for_robot = setup_robot_in_flotilla(
             backend_url=armada.flotilla_backend.backend_url,
-            robot_name=settings.ISAR_ROBOT_NAME,
+            robot_container=isar_robot,
         )
 
         armada.robots[settings.ISAR_ROBOT_NAME] = IsarRobot(
@@ -604,7 +604,7 @@ def armada_with_multiple_robots(armada_without_robots: Armada):
 
             robot_id, installation_code = setup_robot_in_flotilla(
                 backend_url=armada.flotilla_backend.backend_url,
-                robot_name=cfg["name"],
+                robot_container=container,
             )
 
             armada.robots[cfg["name"]] = IsarRobot(

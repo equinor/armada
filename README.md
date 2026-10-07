@@ -26,6 +26,13 @@ No app registrations, tenant or client secrets are needed. The fixtures assert t
 rejects unauthenticated callers before any test runs, and the mission tests attempt unauthorised
 interference mid-flight and then assert the mission completed unaffected.
 
+Robot fixtures explicitly register each ISAR instance through administrator-only
+`POST /robots`, using the test realm's `integration-tests` client after the installation
+has been seeded. Registration uses the container's ISAR ID, metadata, Docker-network alias
+and internal API port, never its host-mapped port. Robots start `Offline`; setup waits for
+telemetry to report `Home` before yielding. `IntegrationTest` remains restricted: the fixtures
+do not depend on MQTT auto-registration or MQTT host/port updates.
+
 MQTT needs no secret either. A CA, a broker certificate and a password per broker user are
 generated per test run in `robotics_integration_tests/utilities/mqtt_credentials.py`; the broker
 assembles them into its configuration on startup. They live only in memory and in the containers

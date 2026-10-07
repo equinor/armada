@@ -1,3 +1,4 @@
+import json
 import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
@@ -6,6 +7,9 @@ import requests
 from loguru import logger
 from requests import Response
 
+from robotics_integration_tests.custom_containers.stream_logging_docker_container import (
+    StreamLoggingDockerContainer,
+)
 from robotics_integration_tests.settings.settings import settings
 from robotics_integration_tests.utilities.authentication import (
     retrieve_access_token_for_integration_tests_app,
@@ -44,6 +48,7 @@ def get_inspection_area_id_for_installation(backend_url: str, installation_code:
         f"{backend_url}/inspectionAreas/installation/{installation_code}",
         headers=_add_headers(),
     )
+    response.raise_for_status()
     inspection_areas_for_installation: List[Dict] = response.json()
     inspection_area_id: str = inspection_areas_for_installation[0]["id"]
     return inspection_area_id
@@ -56,6 +61,7 @@ def set_current_inspection_area_for_robot(
         f"{backend_url}/robots/{robot_id}/currentInspectionArea/{inspection_area_id}",
         headers=_add_headers(),
     )
+    response.raise_for_status()
 
 
 def get_dummy_mission_payload_with_installation(
@@ -432,20 +438,32 @@ def wait_for_database_to_be_populated(backend_url: str, timeout: int = 60) -> No
             return
 
 
-def setup_robot_in_flotilla(backend_url: str, robot_name: str) -> Tuple[str, str]:
-
-    wait_for_robot_to_be_populated_in_database(
-        backend_url=backend_url,
-        robot_name=robot_name,
+def setup_robot_in_flotilla(
+    backend_url: str, robot_container: StreamLoggingDockerContainer
+) -> Tuple[str, str]:
+    """Register with the test administrator before assigning an inspection area."""
+    env = robot_container.env
+    installation_code_for_robot: str = env["ISAR_PLANT_SHORT_NAME"]
+    response: Response = requests.post(
+        f"{backend_url}/robots",
+        json={
+            "name": env["ISAR_ROBOT_NAME"],
+            "isarId": env["ISAR_ISAR_ID"],
+            "robotType": env["ROBOT_MODEL"],
+            "serialNumber": env["ISAR_SERIAL_NUMBER"],
+            "currentInstallationCode": installation_code_for_robot,
+            "documentation": json.loads(env["ISAR_DOCUMENTATION"]),
+            # Flotilla connects from inside Docker, not via the host's mapped port.
+            "host": env["ISAR_API_HOST_VIEWED_EXTERNALLY"],
+            "port": int(env["ISAR_API_PORT"]),
+            "robotCapabilities": json.loads(env["CAPABILITIES"]),
+            "status": "Offline",
+        },
+        headers=_add_headers(),
+        timeout=30,
     )
-    robot: Dict = get_robot_by_name(
-        backend_url=backend_url,
-        name=robot_name,
-    )
-    installation_code_for_robot: str = robot.get("currentInstallation").get(
-        "installationCode"
-    )
-    robot_id: str = robot.get("id")
+    response.raise_for_status()
+    robot_id: str = response.json()["id"]
 
     inspection_area_id: str = get_inspection_area_id_for_installation(
         backend_url=backend_url,
@@ -459,6 +477,11 @@ def setup_robot_in_flotilla(backend_url: str, robot_name: str) -> Tuple[str, str
     )
     wait_for_inspection_area_to_be_updated_on_robot(
         backend_url=backend_url, robot_id=robot_id
+    )
+    wait_for_robot_status(
+        backend_url=backend_url,
+        robot_name=env["ISAR_ROBOT_NAME"],
+        expected_status="Home",
     )
     return robot_id, installation_code_for_robot
 
@@ -494,36 +517,6 @@ def wait_for_inspection_area_to_be_updated_on_robot(
             logger.info(f"Inspection area on robot {robot_id} is not updated yet")
             time.sleep(1)
             continue
-
-
-def wait_for_robot_to_be_populated_in_database(
-    backend_url: str, robot_name: str, timeout: int = 60
-) -> None:
-    start_time: datetime = datetime.now()
-    while True:
-        if datetime.now() - start_time > timedelta(seconds=timeout):
-            raise RuntimeError(
-                f"Robot '{robot_name}' was not populated in the database within the given timeout {timeout} seconds"
-            )
-
-        try:
-            robot: Dict = get_robot_by_name(backend_url=backend_url, name=robot_name)
-        except Exception:
-            logger.warning(f"Failed to retrieve robot {robot_name} from the database")
-            time.sleep(1)
-            continue
-
-        if robot.get("name") == robot_name:
-            logger.info(
-                f"Robot with name '{robot_name}' has been populated in the database"
-            )
-            return
-
-        logger.info(
-            f"Robot with name '{robot_name}' is not populated in the database yet"
-        )
-        time.sleep(1)
-        continue
 
 
 def wait_for_mission_run_status(
