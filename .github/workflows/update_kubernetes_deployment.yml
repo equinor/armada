@@ -23,6 +23,12 @@ on:
         required: true
         type: string
 
+      paired_image_name:
+        description: "Optional second image to update to the same tag in one commit. Paired entries must not have pinned digests."
+        required: false
+        type: string
+        default: ""
+
       author_name:
         description: "Git commit author name"
         required: true
@@ -80,6 +86,7 @@ jobs:
           TARGET_ENVIRONMENT: ${{ inputs.environment }}
           REGISTRY: ${{ inputs.registry }}
           IMAGE_NAME: ${{ inputs.image_name }}
+          PAIRED_IMAGE_NAME: ${{ inputs.paired_image_name }}
           IMAGE_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
@@ -90,9 +97,10 @@ jobs:
           KUSTOMIZATION_FILE="${KUSTOMIZATION_BASE_PATH}/${TARGET_ENVIRONMENT}/kustomization.yaml"
 
           apply_edit() {
-            GREP_RESULT=$(grep -n "newName: ${REGISTRY}/${IMAGE_NAME}$" "$KUSTOMIZATION_FILE" | cut -d ':' -f 1)
+            local image_name="${1:-$IMAGE_NAME}"
+            GREP_RESULT=$(grep -n "newName: ${REGISTRY}/${image_name}$" "$KUSTOMIZATION_FILE" | cut -d ':' -f 1)
             if [ -z "$GREP_RESULT" ]; then
-              echo "Error: Image ${REGISTRY}/${IMAGE_NAME} not found in $KUSTOMIZATION_FILE"
+              echo "Error: Image ${REGISTRY}/${image_name} not found in $KUSTOMIZATION_FILE"
               return 1
             fi
             LINE_NUMBERS=($GREP_RESULT)
@@ -102,18 +110,49 @@ jobs:
             done
           }
 
+          check_unpinned_pair() {
+            local image_name line_number tag_line
+            for image_name in "$IMAGE_NAME" "$PAIRED_IMAGE_NAME"; do
+              line_number=$(grep -n -x "  newName: ${REGISTRY}/${image_name}" "$KUSTOMIZATION_FILE" | cut -d ':' -f 1)
+              if [[ ! "$line_number" =~ ^[0-9]+$ ]]; then
+                echo "Expected exactly one image entry for ${REGISTRY}/${image_name}" >&2
+                return 1
+              fi
+              tag_line=$(sed -n "$((line_number + 1))p" "$KUSTOMIZATION_FILE")
+              if [[ "$tag_line" != "  newTag: "* ]]; then
+                echo "Expected newTag immediately after ${REGISTRY}/${image_name}" >&2
+                return 1
+              fi
+              if ! awk -v name="${REGISTRY}/${image_name}" '
+                $0 == "  newName: " name { in_image = 1; next }
+                in_image && /^[^ ]/ { exit }
+                in_image && /^  digest:/ { found_digest = 1; exit }
+                END { if (found_digest) exit 1 }
+              ' "$KUSTOMIZATION_FILE"; then
+                echo "Remove pinned digest for ${REGISTRY}/${image_name} before updating tags" >&2
+                return 1
+              fi
+            done
+          }
+
           # Several services deploy at once and all push to the same
           # infrastructure repository, so a plain push loses the race whenever
           # two land together. Rather than rebasing — the services often edit
           # the same kustomization file, so a rebase can conflict — each attempt
           # discards local work, takes the latest main, and re-applies the edit.
-          # The edit is a targeted sed and therefore idempotent, so re-applying
-          # is always safe.
+          # The tag edits are targeted and idempotent, so re-applying is safe.
           for attempt in 1 2 3 4 5; do
             git fetch origin main --quiet
             git reset --hard origin/main --quiet
 
+            if [ -n "$PAIRED_IMAGE_NAME" ]; then
+              [ "$IMAGE_NAME" != "$PAIRED_IMAGE_NAME" ] || { echo "Paired image must differ from primary image" >&2; exit 1; }
+              check_unpinned_pair
+            fi
             apply_edit
+            if [ -n "$PAIRED_IMAGE_NAME" ]; then
+              apply_edit "$PAIRED_IMAGE_NAME"
+            fi
 
             git add "$KUSTOMIZATION_FILE"
             if git diff-index --quiet HEAD; then
