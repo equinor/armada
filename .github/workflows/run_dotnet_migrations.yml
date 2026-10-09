@@ -35,6 +35,11 @@ on:
         description: "Azure subscription ID used for OIDC federated login"
         required: true
         type: string
+      use_app_reg_identity:
+        description: "Use the federated app registration for PostgreSQL migrations instead of the admin connection string (SARA design-time factory)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -86,14 +91,9 @@ jobs:
           AZURE_CLIENT_ID: ${{ vars.CLIENTID }}
           AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
           ASPNETCORE_ENVIRONMENT: ${{ vars.AspNetEnvironment }}
-          # Force the design-time DbContext factory onto the Key Vault
-          # connection string. Schema migrations require DDL privileges; the
-          # runtime app-registration role typically only has CRUD grants and
-          # cannot run ALTER TABLE / CREATE TABLE on tables it does not own.
-          # The Key Vault connection string authenticates as the PostgreSQL
-          # admin (postgresuser), which retains ownership of the schema and
-          # can perform DDL safely.
-          # Apps whose Database:AllowedAuthMethods config key isn't honored
-          # (e.g. those that hard-code the design-time auth method) ignore
-          # this variable harmlessly.
-          Database__AllowedAuthMethods__0: ConnectionString
+          # Default to the existing admin connection string until the caller
+          # has transferred migration-managed objects and enabled identity auth.
+          # SARA's design-time factory enforces RequireAppRegIdentity without
+          # fallback, even if appsettings still contains ConnectionString.
+          Database__AllowedAuthMethods__0: ${{ inputs.use_app_reg_identity && 'AppRegIdentity' || 'ConnectionString' }}
+          Database__RequireAppRegIdentity: ${{ inputs.use_app_reg_identity }}
