@@ -24,7 +24,19 @@ on:
         type: string
 
       paired_image_name:
-        description: "Optional second image to update to the same tag in one commit. Paired entries must not have pinned digests."
+        description: "Optional second image to update to the same tag in one commit. Supply both digests when pinning a pair."
+        required: false
+        type: string
+        default: ""
+
+      digest:
+        description: "Optional immutable digest for the primary image; pinned updates require a paired image and its digest."
+        required: false
+        type: string
+        default: ""
+
+      paired_image_digest:
+        description: "Optional immutable digest for the paired image."
         required: false
         type: string
         default: ""
@@ -87,6 +99,8 @@ jobs:
           REGISTRY: ${{ inputs.registry }}
           IMAGE_NAME: ${{ inputs.image_name }}
           PAIRED_IMAGE_NAME: ${{ inputs.paired_image_name }}
+          IMAGE_DIGEST: ${{ inputs.digest }}
+          PAIRED_IMAGE_DIGEST: ${{ inputs.paired_image_digest }}
           IMAGE_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
@@ -135,6 +149,47 @@ jobs:
             done
           }
 
+          update_pinned_pair() {
+            python3 - "$KUSTOMIZATION_FILE" <<'PY'
+          import os
+          import re
+          import sys
+
+          path = sys.argv[1]
+          with open(path, encoding="utf-8") as config_file:
+              content = config_file.read()
+
+          for name, digest in (
+              (os.environ["IMAGE_NAME"], os.environ["IMAGE_DIGEST"]),
+              (os.environ["PAIRED_IMAGE_NAME"], os.environ["PAIRED_IMAGE_DIGEST"]),
+          ):
+              image = f'{os.environ["REGISTRY"]}/{name}'
+              # Only the exact image entry may be changed; keep every other
+              # service in this shared analytics overlay intact.
+              pattern = re.compile(
+                  r"(?m)^(- name: [^\n]+\n  newName: " + re.escape(image)
+                  + r"\n)(  newTag: [^\n]+\n)(  digest: [^\n]+\n)?"
+              )
+              matches = list(pattern.finditer(content))
+              if len(matches) != 1:
+                  raise SystemExit(f"Expected exactly one image entry for {image}")
+              content = pattern.sub(
+                  lambda match: match.group(1)
+                  + f'  newTag: {os.environ["IMAGE_TAG"]}\n  digest: {digest}\n',
+                  content,
+                  count=1,
+              )
+
+          with open(path, "w", encoding="utf-8") as config_file:
+              config_file.write(content)
+          PY
+          }
+
+          if [ -n "$IMAGE_DIGEST" ] || [ -n "$PAIRED_IMAGE_DIGEST" ]; then
+            [ -n "$PAIRED_IMAGE_NAME" ] && [ "$IMAGE_NAME" != "$PAIRED_IMAGE_NAME" ] || { echo "Digest pinning requires distinct paired images" >&2; exit 1; }
+            [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ && "$PAIRED_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "Both valid digests are required for a pinned pair" >&2; exit 1; }
+          fi
+
           # Several services deploy at once and all push to the same
           # infrastructure repository, so a plain push loses the race whenever
           # two land together. Rather than rebasing — the services often edit
@@ -145,13 +200,17 @@ jobs:
             git fetch origin main --quiet
             git reset --hard origin/main --quiet
 
-            if [ -n "$PAIRED_IMAGE_NAME" ]; then
-              [ "$IMAGE_NAME" != "$PAIRED_IMAGE_NAME" ] || { echo "Paired image must differ from primary image" >&2; exit 1; }
-              check_unpinned_pair
-            fi
-            apply_edit
-            if [ -n "$PAIRED_IMAGE_NAME" ]; then
-              apply_edit "$PAIRED_IMAGE_NAME"
+            if [ -n "$IMAGE_DIGEST" ]; then
+              update_pinned_pair
+            else
+              if [ -n "$PAIRED_IMAGE_NAME" ]; then
+                [ "$IMAGE_NAME" != "$PAIRED_IMAGE_NAME" ] || { echo "Paired image must differ from primary image" >&2; exit 1; }
+                check_unpinned_pair
+              fi
+              apply_edit
+              if [ -n "$PAIRED_IMAGE_NAME" ]; then
+                apply_edit "$PAIRED_IMAGE_NAME"
+              fi
             fi
 
             git add "$KUSTOMIZATION_FILE"
