@@ -47,8 +47,9 @@ BATTERY_POLL_INTERVAL = "1"
 
 # Keeps the idle robot in AwaitNextMission rather than letting it wander home,
 # where it would charge and never cross the threshold. It also makes Available a
-# resting state for that robot, and so safe to assert.
-LONG_RETURN_HOME_DELAY = "600"
+# resting state for that robot, and so safe to assert. The threshold is crossed
+# roughly 25 s after boot; the delay leaves headroom for a slow runner.
+LONG_RETURN_HOME_DELAY = "120"
 
 LOW_BATTERY_WHILE_IDLE = "LowBatteryWhileIdle"
 LOW_BATTERY_DURING_MISSION = "LowBatteryDuringMission"

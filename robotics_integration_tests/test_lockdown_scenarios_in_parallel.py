@@ -45,8 +45,10 @@ from robotics_integration_tests.utilities.isar_api import (
 
 SLOW_TASK_DURATION_SECONDS = 20.0
 
-# The idle robot must not wander home on its own before lockdown is triggered.
-LONG_RETURN_HOME_DELAY_SECONDS = "600"
+# The idle robot must not wander home on its own before lockdown is triggered,
+# which takes roughly 45 s after it reaches AwaitNextMission. The delay leaves
+# headroom for a slow runner while still letting ISAR go home by itself.
+LONG_RETURN_HOME_DELAY_SECONDS = "120"
 
 # Robots that boot away from home discharge steadily, and a long test can drift
 # past ISAR's default 25 % mission threshold and divert into recharging. These

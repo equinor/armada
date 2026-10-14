@@ -48,8 +48,13 @@ SLOW_TASK_DURATION_SECONDS = 15.0
 SHORT_RETURN_HOME_DELAY_SECONDS = "5"
 
 # The return-home scenarios trigger the return home themselves, so ISAR must not
-# start one on its own first and win the race.
-LONG_RETURN_HOME_DELAY_SECONDS = "600"
+# start one on its own first and win the race. That happens roughly 70 s after
+# the robots reach AwaitNextMission; the delay leaves headroom for a slow runner.
+# Once their missions finish, ISAR sends them home on its own after this delay.
+LONG_RETURN_HOME_DELAY_SECONDS = "120"
+
+# Long enough for ISAR's own delayed return home, plus the return home itself.
+FINAL_HOME_TIMEOUT_SECONDS = 300
 
 # Robots that boot away from home discharge steadily, and a long test can drift
 # past ISAR's default 25 % mission threshold and divert into recharging. These
@@ -243,20 +248,8 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
         timeout=180,
     )
 
-    # These two robots were given a long return-home delay so that ISAR would not
-    # start a return home of its own before the test superseded one. That delay is
-    # still in force now their missions have finished, so they would sit in
-    # AwaitNextMission for ten minutes; ask them to go home explicitly instead.
-    schedule_return_to_home(
-        backend_url=backend_url,
-        robot_id=armada.robots[MISSION_WHILE_RETURNING_HOME].robot_id,
-    )
-    schedule_return_to_home(
-        backend_url=backend_url,
-        robot_id=armada.robots[MISSION_WHILE_RETURN_HOME_PAUSED].robot_id,
-    )
-
-    # Every robot must settle back at home rather than needing an operator.
+    # Every robot must settle back at home rather than needing an operator. The
+    # two return-home robots get there through ISAR's own delayed return home.
     wait_for_all_robot_statuses(
         backend_url=backend_url,
         robot_status_expectations={
@@ -265,5 +258,5 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
             MISSION_WHILE_RETURNING_HOME: "Home",
             MISSION_WHILE_RETURN_HOME_PAUSED: "Home",
         },
-        timeout=180,
+        timeout=FINAL_HOME_TIMEOUT_SECONDS,
     )
