@@ -48,13 +48,11 @@ SLOW_TASK_DURATION_SECONDS = 15.0
 SHORT_RETURN_HOME_DELAY_SECONDS = "5"
 
 # The return-home scenarios trigger the return home themselves, so ISAR must not
-# start one on its own first and win the race. That happens roughly 70 s after
-# the robots reach AwaitNextMission; the delay leaves headroom for a slow runner.
-# Once their missions finish, ISAR sends them home on its own after this delay.
-LONG_RETURN_HOME_DELAY_SECONDS = "120"
-
-# Long enough for ISAR's own delayed return home, plus the return home itself.
-FINAL_HOME_TIMEOUT_SECONDS = 300
+# start one on its own first and win the race. Those robots boot last and their
+# scenarios run first, so the return home is triggered within about 15 s of
+# AwaitNextMission; this leaves three times that. Once their missions finish,
+# ISAR sends them home on its own after the same delay.
+RETURN_HOME_ROBOT_DELAY_SECONDS = "45"
 
 # Robots that boot away from home discharge steadily, and a long test can drift
 # past ISAR's default 25 % mission threshold and divert into recharging. These
@@ -94,7 +92,7 @@ def _return_home_robot(name: str, alias: str) -> RobotScenario:
         should_start_at_home=False,
         task_duration_in_seconds=SLOW_TASK_DURATION_SECONDS,
         extra_environment={
-            "ISAR_RETURN_HOME_DELAY": LONG_RETURN_HOME_DELAY_SECONDS,
+            "ISAR_RETURN_HOME_DELAY": RETURN_HOME_ROBOT_DELAY_SECONDS,
             **NO_BATTERY_INTERFERENCE,
         },
     )
@@ -136,41 +134,9 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
     )
     backend_url: str = armada.flotilla_backend.backend_url
 
-    # ---------------------------------------------------------------- scenario 1
-    # Monitor -> Stopping -> AwaitNextMission. The stop carries the unfinished
-    # tasks back to the state machine as an AbortedMission.
-    stop_during_mission_run: Dict = _schedule_dummy_mission(armada, STOP_DURING_MISSION)
-    wait_for_second_task_status_of_mission_run(
-        backend_url=backend_url,
-        mission_run_id=stop_during_mission_run["id"],
-        expected_status="InProgress",
-        timeout=180,
-    )
-    stop_mission(
-        backend_url=backend_url, robot_id=armada.robots[STOP_DURING_MISSION].robot_id
-    )
-
-    # ---------------------------------------------------------------- scenario 2
-    # Monitor -> Pausing -> Paused -> StoppingPausedMission -> AwaitNextMission.
-    stop_while_paused_run: Dict = _schedule_dummy_mission(armada, STOP_WHILE_PAUSED)
-    wait_for_second_task_status_of_mission_run(
-        backend_url=backend_url,
-        mission_run_id=stop_while_paused_run["id"],
-        expected_status="InProgress",
-        timeout=180,
-    )
-    pause_mission(
-        backend_url=backend_url, robot_id=armada.robots[STOP_WHILE_PAUSED].robot_id
-    )
-    wait_for_robot_status(
-        backend_url=backend_url,
-        robot_name=STOP_WHILE_PAUSED,
-        expected_status="Paused",
-        timeout=180,
-    )
-    stop_mission(
-        backend_url=backend_url, robot_id=armada.robots[STOP_WHILE_PAUSED].robot_id
-    )
+    # The return-home scenarios run first: their robots must still be idle away
+    # from home when the return home is triggered, and ISAR's return-home delay
+    # only holds them there for a short while.
 
     # ---------------------------------------------------------------- scenario 3
     # ReturningHome -> StoppingReturnHome -> Monitor. There is no way to stop a
@@ -219,6 +185,42 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
         armada, MISSION_WHILE_RETURN_HOME_PAUSED
     )
 
+    # ---------------------------------------------------------------- scenario 1
+    # Monitor -> Stopping -> AwaitNextMission. The stop carries the unfinished
+    # tasks back to the state machine as an AbortedMission.
+    stop_during_mission_run: Dict = _schedule_dummy_mission(armada, STOP_DURING_MISSION)
+    wait_for_second_task_status_of_mission_run(
+        backend_url=backend_url,
+        mission_run_id=stop_during_mission_run["id"],
+        expected_status="InProgress",
+        timeout=180,
+    )
+    stop_mission(
+        backend_url=backend_url, robot_id=armada.robots[STOP_DURING_MISSION].robot_id
+    )
+
+    # ---------------------------------------------------------------- scenario 2
+    # Monitor -> Pausing -> Paused -> StoppingPausedMission -> AwaitNextMission.
+    stop_while_paused_run: Dict = _schedule_dummy_mission(armada, STOP_WHILE_PAUSED)
+    wait_for_second_task_status_of_mission_run(
+        backend_url=backend_url,
+        mission_run_id=stop_while_paused_run["id"],
+        expected_status="InProgress",
+        timeout=180,
+    )
+    pause_mission(
+        backend_url=backend_url, robot_id=armada.robots[STOP_WHILE_PAUSED].robot_id
+    )
+    wait_for_robot_status(
+        backend_url=backend_url,
+        robot_name=STOP_WHILE_PAUSED,
+        expected_status="Paused",
+        timeout=180,
+    )
+    stop_mission(
+        backend_url=backend_url, robot_id=armada.robots[STOP_WHILE_PAUSED].robot_id
+    )
+
     # ------------------------------------------------------------------ outcomes
     # The two stopped missions must end Cancelled; the two that interrupted a
     # return home must go on to complete, which is what proves the state machine
@@ -258,5 +260,5 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
             MISSION_WHILE_RETURNING_HOME: "Home",
             MISSION_WHILE_RETURN_HOME_PAUSED: "Home",
         },
-        timeout=FINAL_HOME_TIMEOUT_SECONDS,
+        timeout=180,
     )

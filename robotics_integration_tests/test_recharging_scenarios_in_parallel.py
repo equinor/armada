@@ -48,8 +48,9 @@ BATTERY_POLL_INTERVAL = "1"
 # Keeps the idle robot in AwaitNextMission rather than letting it wander home,
 # where it would charge and never cross the threshold. It also makes Available a
 # resting state for that robot, and so safe to assert. The threshold is crossed
-# roughly 25 s after boot; the delay leaves headroom for a slow runner.
-LONG_RETURN_HOME_DELAY = "120"
+# about 25 s after boot regardless of runner speed, since the battery ramp is
+# simulated; this leaves almost twice that.
+IDLE_ROBOT_RETURN_HOME_DELAY = "45"
 
 LOW_BATTERY_WHILE_IDLE = "LowBatteryWhileIdle"
 LOW_BATTERY_DURING_MISSION = "LowBatteryDuringMission"
@@ -76,7 +77,7 @@ def _idle_robot() -> RobotScenario:
             "ROBOT_ROBOT_BATTERY_PUBLISH_INTERVAL": BATTERY_PUBLISH_INTERVAL,
             "ISAR_ROBOT_API_BATTERY_POLL_INTERVAL": BATTERY_POLL_INTERVAL,
             "ISAR_ROBOT_BATTERY_RECHARGE_THRESHOLD": "50",
-            "ISAR_RETURN_HOME_DELAY": LONG_RETURN_HOME_DELAY,
+            "ISAR_RETURN_HOME_DELAY": IDLE_ROBOT_RETURN_HOME_DELAY,
         },
     )
 

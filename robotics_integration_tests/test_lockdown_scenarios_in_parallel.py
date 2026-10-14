@@ -45,10 +45,10 @@ from robotics_integration_tests.utilities.isar_api import (
 
 SLOW_TASK_DURATION_SECONDS = 20.0
 
-# The idle robot must not wander home on its own before lockdown is triggered,
-# which takes roughly 45 s after it reaches AwaitNextMission. The delay leaves
-# headroom for a slow runner while still letting ISAR go home by itself.
-LONG_RETURN_HOME_DELAY_SECONDS = "120"
+# The idle robot must not wander home on its own before lockdown is triggered.
+# It boots last, so lockdown follows its AwaitNextMission by roughly the first
+# task of the other robot's mission (about 30 s); this leaves twice that.
+IDLE_ROBOT_RETURN_HOME_DELAY_SECONDS = "60"
 
 # Robots that boot away from home discharge steadily, and a long test can drift
 # past ISAR's default 25 % mission threshold and divert into recharging. These
@@ -62,24 +62,25 @@ LOCKDOWN_DURING_MISSION = "LockdownDuringMission"
 def test_lockdown_scenarios_in_parallel(armada_with_robot_roster) -> None:
     armada: Armada = armada_with_robot_roster(
         [
-            # Boots away from home, so it sits in AwaitNextMission and has to
-            # travel back when locked down. A robot that is already Home enters
-            # Lockdown directly and never passes through GoingToLockdown.
+            RobotScenario(
+                name=LOCKDOWN_DURING_MISSION,
+                alias="isar_lockdown_during_mission",
+                task_duration_in_seconds=SLOW_TASK_DURATION_SECONDS,
+                extra_environment=dict(NO_BATTERY_INTERFERENCE),
+            ),
+            # Boots last, and away from home, so it sits in AwaitNextMission
+            # and has to travel back when locked down. A robot that is already
+            # Home enters Lockdown directly and never passes through
+            # GoingToLockdown.
             RobotScenario(
                 name=LOCKDOWN_WHILE_IDLE,
                 alias="isar_lockdown_while_idle",
                 should_start_at_home=False,
                 task_duration_in_seconds=SLOW_TASK_DURATION_SECONDS,
                 extra_environment={
-                    "ISAR_RETURN_HOME_DELAY": LONG_RETURN_HOME_DELAY_SECONDS,
+                    "ISAR_RETURN_HOME_DELAY": IDLE_ROBOT_RETURN_HOME_DELAY_SECONDS,
                     **NO_BATTERY_INTERFERENCE,
                 },
-            ),
-            RobotScenario(
-                name=LOCKDOWN_DURING_MISSION,
-                alias="isar_lockdown_during_mission",
-                task_duration_in_seconds=SLOW_TASK_DURATION_SECONDS,
-                extra_environment=dict(NO_BATTERY_INTERFERENCE),
             ),
         ]
     )
