@@ -600,7 +600,6 @@ def _start_robot_roster(armada: Armada, roster, stack: ExitStack) -> Armada:
         robot_id, installation_code = setup_robot_in_flotilla(
             backend_url=armada.flotilla_backend.backend_url,
             robot_container=container,
-            expected_status="Home" if scenario.should_start_at_home else "Available",
         )
 
         armada.robots[scenario.name] = IsarRobot(

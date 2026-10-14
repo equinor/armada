@@ -439,15 +439,9 @@ def wait_for_database_to_be_populated(backend_url: str, timeout: int = 60) -> No
 
 
 def setup_robot_in_flotilla(
-    backend_url: str,
-    robot_container: StreamLoggingDockerContainer,
-    expected_status: str = "Home",
+    backend_url: str, robot_container: StreamLoggingDockerContainer
 ) -> Tuple[str, str]:
-    """Register with the test administrator before assigning an inspection area.
-
-    Waits for telemetry to report expected_status. A robot that boots away from
-    home rests in Available rather than Home.
-    """
+    """Register with the test administrator before assigning an inspection area."""
     env = robot_container.env
     installation_code_for_robot: str = env["ISAR_PLANT_SHORT_NAME"]
     response: Response = requests.post(
@@ -487,7 +481,7 @@ def setup_robot_in_flotilla(
     wait_for_robot_status(
         backend_url=backend_url,
         robot_name=env["ISAR_ROBOT_NAME"],
-        expected_status=expected_status,
+        expected_status="Home",
     )
     return robot_id, installation_code_for_robot
 
@@ -633,6 +627,46 @@ def wait_for_robot_status(
             )
             time.sleep(1)
             continue
+
+
+def schedule_dummy_mission(
+    backend_url: str, robot_id: str, installation_code: str
+) -> Dict:
+    mission_payload: Dict = get_dummy_mission_payload_with_installation(
+        installation_code
+    )
+    mission: Dict = create_mission(backend_url=backend_url, payload=mission_payload)
+    mission_run: Dict = schedule_mission(
+        backend_url=backend_url, robot_id=robot_id, mission_id=mission["id"]
+    )
+    logger.info(
+        f"Scheduled mission {mission['id']} with run id {mission_run['id']} "
+        f"on robot {robot_id}"
+    )
+    return mission_run
+
+
+def wait_until_idle_away_from_home(
+    backend_url: str, robot_name: str, mission_run_id: str, timeout: int = 240
+) -> None:
+    """Wait for a positioning mission to finish and leave the robot Available.
+
+    Robots boot at home. A scenario that needs one idle somewhere else first runs
+    a mission on it; when that ends ISAR rests in AwaitNextMission until its
+    RETURN_HOME_DELAY expires, and that countdown starts here rather than at boot.
+    """
+    wait_for_mission_run_status(
+        backend_url=backend_url,
+        mission_run_id=mission_run_id,
+        expected_status="Successful",
+        timeout=timeout,
+    )
+    wait_for_robot_status(
+        backend_url=backend_url,
+        robot_name=robot_name,
+        expected_status="Available",
+        timeout=timeout,
+    )
 
 
 def wait_for_all_mission_run_statuses(

@@ -19,26 +19,27 @@ long as the return-home mission and could fall between two polls.
 
 Battery behaviour in isar-robot is a simple ramp: the level falls 0.4 per
 telemetry sample away from home and rises 2.0 per sample while at home, so at a
-one second publish interval it falls 0.4 %/s and rises 2 %/s. Each robot boots at
-a level chosen so its threshold crossing lands where the scenario needs it, which
-requires isar-robot with ROBOT_INITIAL_BATTERY_LEVEL.
+one second publish interval it falls 0.4 %/s and rises 2 %/s. Both robots boot
+at home, where they charge to 100 %, so each crossing is timed from when its
+mission sends it away and lands where the scenario needs it regardless of runner
+speed.
 """
 
 from typing import Dict
 
-from loguru import logger
-
 from robotics_integration_tests.armada import Armada
 from robotics_integration_tests.custom_containers.isar import RobotScenario
 from robotics_integration_tests.utilities.flotilla_backend_api import (
-    create_mission,
-    get_dummy_mission_payload_with_installation,
-    schedule_mission,
+    schedule_dummy_mission,
     wait_for_mission_run_status,
     wait_for_robot_status_sequences,
 )
 
 SLOW_TASK_DURATION_SECONDS = 25.0
+
+# The idle robot's positioning mission only needs to take it away from home: three
+# five second tasks, about 25 s in all.
+POSITIONING_TASK_DURATION_SECONDS = 5.0
 
 # One battery sample per second, and ISAR reading it just as often, so a crossing
 # is noticed within a second of happening.
@@ -47,36 +48,33 @@ BATTERY_POLL_INTERVAL = "1"
 
 # Keeps the idle robot in AwaitNextMission rather than letting it wander home,
 # where it would charge and never cross the threshold. It also makes Available a
-# resting state for that robot, and so safe to assert. The threshold is crossed
-# about 25 s after boot regardless of runner speed, since the battery ramp is
-# simulated; this leaves almost twice that.
-IDLE_ROBOT_RETURN_HOME_DELAY = "45"
+# resting state for that robot, and so safe to assert. The countdown starts when
+# its positioning mission ends, and the threshold is crossed about 12 s later.
+IDLE_ROBOT_RETURN_HOME_DELAY = "30"
 
 LOW_BATTERY_WHILE_IDLE = "LowBatteryWhileIdle"
 LOW_BATTERY_DURING_MISSION = "LowBatteryDuringMission"
 
 
 def _idle_robot() -> RobotScenario:
-    """Boots away from home with just enough charge to reach the threshold.
+    """Is sent away from home by a short mission and runs low once it is idle.
 
-    35 % rather than something nearer the 25 % threshold: at 0.4 %/s that is a
-    25 second run, which leaves Available observable for long enough to assert.
-    Starting at 27 % would cross about five seconds after boot and race ISAR's own
-    five second status poll, leaving Available visible for under a second.
-
-    The recharge threshold is only 50 % so charging is short; this robot has no
-    mission to finish afterwards, so it needs no headroom.
+    It leaves home at 100 % and falls 0.4 %/s, so an 85 % mission threshold is
+    crossed (100 - 85) / 0.4 = 37.5 s after departure. The positioning mission is
+    done after about 25 s, which leaves Available observable for about 12 s and
+    keeps the crossing clear of the mission, where it would take the with-mission
+    path. Charging back up to the 98 % recharge threshold takes about 7 s, long
+    enough to observe Recharging.
     """
     return RobotScenario(
         name=LOW_BATTERY_WHILE_IDLE,
         alias="isar_low_battery_while_idle",
-        should_start_at_home=False,
-        task_duration_in_seconds=SLOW_TASK_DURATION_SECONDS,
-        initial_battery_level=35.0,
+        task_duration_in_seconds=POSITIONING_TASK_DURATION_SECONDS,
         extra_environment={
             "ROBOT_ROBOT_BATTERY_PUBLISH_INTERVAL": BATTERY_PUBLISH_INTERVAL,
             "ISAR_ROBOT_API_BATTERY_POLL_INTERVAL": BATTERY_POLL_INTERVAL,
-            "ISAR_ROBOT_BATTERY_RECHARGE_THRESHOLD": "50",
+            "ISAR_ROBOT_MISSION_BATTERY_START_THRESHOLD": "85",
+            "ISAR_ROBOT_BATTERY_RECHARGE_THRESHOLD": "98",
             "ISAR_RETURN_HOME_DELAY": IDLE_ROBOT_RETURN_HOME_DELAY,
         },
     )
@@ -115,25 +113,24 @@ def test_recharging_scenarios_in_parallel(armada_with_robot_roster) -> None:
     armada: Armada = armada_with_robot_roster([_idle_robot(), _mission_robot()])
     backend_url: str = armada.flotilla_backend.backend_url
 
+    idle_robot = armada.robots[LOW_BATTERY_WHILE_IDLE]
     mission_robot = armada.robots[LOW_BATTERY_DURING_MISSION]
 
-    mission_payload: Dict = get_dummy_mission_payload_with_installation(
-        mission_robot.installation_code
+    positioning_run: Dict = schedule_dummy_mission(
+        backend_url=backend_url,
+        robot_id=idle_robot.robot_id,
+        installation_code=idle_robot.installation_code,
     )
-    mission: Dict = create_mission(backend_url=backend_url, payload=mission_payload)
-    interrupted_run: Dict = schedule_mission(
+    interrupted_run: Dict = schedule_dummy_mission(
         backend_url=backend_url,
         robot_id=mission_robot.robot_id,
-        mission_id=mission["id"],
-    )
-    logger.info(
-        f"Scheduled mission run {interrupted_run['id']} on {LOW_BATTERY_DURING_MISSION}"
+        installation_code=mission_robot.installation_code,
     )
 
     # Both robots are tracked in one polling loop. Waiting on them one after the
     # other would risk the second robot passing through its window while the
-    # first is still being polled: the idle robot charges at roughly 70 s, and the
-    # mission robot reaches RechargingWithMission at roughly 120 s.
+    # first is still being polled: the idle robot charges at roughly 40 s, and the
+    # mission robot reaches RechargingWithMission at roughly 65 s.
     #
     # RechargingWithMission is reachable only when the stop that preceded it
     # handed back an AbortedMission, so resting there is what proves the mission
@@ -145,6 +142,14 @@ def test_recharging_scenarios_in_parallel(armada_with_robot_roster) -> None:
             LOW_BATTERY_DURING_MISSION: ["RechargingWithMission", "Home"],
         },
         timeout=420,
+    )
+
+    # The positioning run must have finished on its own: a crossing during it
+    # would have taken the with-mission path instead.
+    wait_for_mission_run_status(
+        backend_url=backend_url,
+        mission_run_id=positioning_run["id"],
+        expected_status="Successful",
     )
 
     # The interrupted mission must then be handed back and run to completion.

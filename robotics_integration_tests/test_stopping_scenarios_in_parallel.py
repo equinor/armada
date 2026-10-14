@@ -22,21 +22,18 @@ return home was superseded rather than the mission being refused.
 
 from typing import Dict
 
-from loguru import logger
-
 from robotics_integration_tests.armada import Armada
 from robotics_integration_tests.custom_containers.isar import RobotScenario
 from robotics_integration_tests.utilities.flotilla_backend_api import (
-    create_mission,
-    get_dummy_mission_payload_with_installation,
     pause_mission,
-    schedule_mission,
+    schedule_dummy_mission,
     schedule_return_to_home,
     stop_mission,
     wait_for_all_robot_statuses,
     wait_for_robot_status,
     wait_for_mission_run_status,
     wait_for_second_task_status_of_mission_run,
+    wait_until_idle_away_from_home,
 )
 
 # Tasks are stretched so that every scenario has a comfortable window in which to
@@ -48,15 +45,15 @@ SLOW_TASK_DURATION_SECONDS = 15.0
 SHORT_RETURN_HOME_DELAY_SECONDS = "5"
 
 # The return-home scenarios trigger the return home themselves, so ISAR must not
-# start one on its own first and win the race. Those robots boot last and their
-# scenarios run first, so the return home is triggered within about 15 s of
-# AwaitNextMission; this leaves three times that. Once their missions finish,
-# ISAR sends them home on its own after the same delay.
-RETURN_HOME_ROBOT_DELAY_SECONDS = "45"
+# start one on its own first and win the race. The countdown starts when their
+# positioning missions end, and the return home is triggered within a few
+# seconds of that. Once their final missions finish, ISAR sends them home on its
+# own after the same delay.
+RETURN_HOME_ROBOT_DELAY_SECONDS = "30"
 
-# Robots that boot away from home discharge steadily, and a long test can drift
-# past ISAR's default 25 % mission threshold and divert into recharging. These
-# scenarios are not about battery, so the threshold is pinned out of the way.
+# Robots discharge while away from home, and a long test can drift past ISAR's
+# default 25 % mission threshold and divert into recharging. These scenarios are
+# not about battery, so the threshold is pinned out of the way.
 NO_BATTERY_INTERFERENCE = {"ISAR_ROBOT_MISSION_BATTERY_START_THRESHOLD": "0"}
 
 STOP_DURING_MISSION = "StopDuringMission"
@@ -79,7 +76,7 @@ def _mission_robot(name: str, alias: str) -> RobotScenario:
 
 
 def _return_home_robot(name: str, alias: str) -> RobotScenario:
-    """A robot that boots *away* from home, so a return home actually runs.
+    """A robot that is sent away from home first, so a return home actually runs.
 
     A robot that is already home rejects a return-home mission with
     RobotAlreadyHomeException, which ISAR treats as instant success. It would
@@ -89,7 +86,6 @@ def _return_home_robot(name: str, alias: str) -> RobotScenario:
     return RobotScenario(
         name=name,
         alias=alias,
-        should_start_at_home=False,
         task_duration_in_seconds=SLOW_TASK_DURATION_SECONDS,
         extra_environment={
             "ISAR_RETURN_HOME_DELAY": RETURN_HOME_ROBOT_DELAY_SECONDS,
@@ -100,22 +96,11 @@ def _return_home_robot(name: str, alias: str) -> RobotScenario:
 
 def _schedule_dummy_mission(armada: Armada, robot_name: str) -> Dict:
     robot = armada.robots[robot_name]
-    backend_url: str = armada.flotilla_backend.backend_url
-
-    mission_payload: Dict = get_dummy_mission_payload_with_installation(
-        robot.installation_code
-    )
-    mission: Dict = create_mission(backend_url=backend_url, payload=mission_payload)
-    mission_run: Dict = schedule_mission(
-        backend_url=backend_url,
+    return schedule_dummy_mission(
+        backend_url=armada.flotilla_backend.backend_url,
         robot_id=robot.robot_id,
-        mission_id=mission["id"],
+        installation_code=robot.installation_code,
     )
-    logger.info(
-        f"Scheduled mission {mission['id']} with run id {mission_run['id']} "
-        f"on robot {robot_name}"
-    )
-    return mission_run
 
 
 def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
@@ -134,56 +119,13 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
     )
     backend_url: str = armada.flotilla_backend.backend_url
 
-    # The return-home scenarios run first: their robots must still be idle away
-    # from home when the return home is triggered, and ISAR's return-home delay
-    # only holds them there for a short while.
-
-    # ---------------------------------------------------------------- scenario 3
-    # ReturningHome -> StoppingReturnHome -> Monitor. There is no way to stop a
-    # return home; scheduling a mission supersedes it, and ISAR stops the
-    # return-home mission internally to start the new one.
-    returning_home_robot = armada.robots[MISSION_WHILE_RETURNING_HOME]
-    schedule_return_to_home(
-        backend_url=backend_url, robot_id=returning_home_robot.robot_id
-    )
-    # Synchronisation, not a coverage assertion: the mission must not be
-    # scheduled until the return home is genuinely under way. ReturningHome lasts
-    # as long as the return-home mission, so it is comfortably pollable.
-    wait_for_robot_status(
-        backend_url=backend_url,
-        robot_name=MISSION_WHILE_RETURNING_HOME,
-        expected_status="ReturningHome",
-        timeout=240,
-    )
-    interrupting_run: Dict = _schedule_dummy_mission(
-        armada, MISSION_WHILE_RETURNING_HOME
-    )
-
-    # ---------------------------------------------------------------- scenario 4
-    # ReturningHome -> PausingReturnHome -> ReturnHomePaused ->
-    # StoppingPausedReturnHome -> Monitor. Pause and resume are the only controls
-    # ISAR offers over a return home, so the paused return home is likewise
-    # superseded by scheduling a mission rather than stopped.
-    return_home_paused_robot = armada.robots[MISSION_WHILE_RETURN_HOME_PAUSED]
-    schedule_return_to_home(
-        backend_url=backend_url, robot_id=return_home_paused_robot.robot_id
-    )
-    wait_for_robot_status(
-        backend_url=backend_url,
-        robot_name=MISSION_WHILE_RETURN_HOME_PAUSED,
-        expected_status="ReturningHome",
-        timeout=240,
-    )
-    pause_mission(backend_url=backend_url, robot_id=return_home_paused_robot.robot_id)
-    wait_for_robot_status(
-        backend_url=backend_url,
-        robot_name=MISSION_WHILE_RETURN_HOME_PAUSED,
-        expected_status="ReturnHomePaused",
-        timeout=240,
-    )
-    resuming_run: Dict = _schedule_dummy_mission(
-        armada, MISSION_WHILE_RETURN_HOME_PAUSED
-    )
+    # The return-home robots boot at home and are sent away first, so that a
+    # return home has somewhere to go. Their positioning missions run while
+    # scenarios 1 and 2 are set up, and finish at about the time those are done.
+    positioning_runs: Dict[str, Dict] = {
+        name: _schedule_dummy_mission(armada, name)
+        for name in (MISSION_WHILE_RETURNING_HOME, MISSION_WHILE_RETURN_HOME_PAUSED)
+    }
 
     # ---------------------------------------------------------------- scenario 1
     # Monitor -> Stopping -> AwaitNextMission. The stop carries the unfinished
@@ -219,6 +161,63 @@ def test_stopping_scenarios_in_parallel(armada_with_robot_roster) -> None:
     )
     stop_mission(
         backend_url=backend_url, robot_id=armada.robots[STOP_WHILE_PAUSED].robot_id
+    )
+
+    # ---------------------------------------------------------------- scenario 3
+    # ReturningHome -> StoppingReturnHome -> Monitor. There is no way to stop a
+    # return home; scheduling a mission supersedes it, and ISAR stops the
+    # return-home mission internally to start the new one.
+    returning_home_robot = armada.robots[MISSION_WHILE_RETURNING_HOME]
+    wait_until_idle_away_from_home(
+        backend_url=backend_url,
+        robot_name=MISSION_WHILE_RETURNING_HOME,
+        mission_run_id=positioning_runs[MISSION_WHILE_RETURNING_HOME]["id"],
+    )
+    schedule_return_to_home(
+        backend_url=backend_url, robot_id=returning_home_robot.robot_id
+    )
+    # Synchronisation, not a coverage assertion: the mission must not be
+    # scheduled until the return home is genuinely under way. ReturningHome lasts
+    # as long as the return-home mission, so it is comfortably pollable.
+    wait_for_robot_status(
+        backend_url=backend_url,
+        robot_name=MISSION_WHILE_RETURNING_HOME,
+        expected_status="ReturningHome",
+        timeout=240,
+    )
+    interrupting_run: Dict = _schedule_dummy_mission(
+        armada, MISSION_WHILE_RETURNING_HOME
+    )
+
+    # ---------------------------------------------------------------- scenario 4
+    # ReturningHome -> PausingReturnHome -> ReturnHomePaused ->
+    # StoppingPausedReturnHome -> Monitor. Pause and resume are the only controls
+    # ISAR offers over a return home, so the paused return home is likewise
+    # superseded by scheduling a mission rather than stopped.
+    return_home_paused_robot = armada.robots[MISSION_WHILE_RETURN_HOME_PAUSED]
+    wait_until_idle_away_from_home(
+        backend_url=backend_url,
+        robot_name=MISSION_WHILE_RETURN_HOME_PAUSED,
+        mission_run_id=positioning_runs[MISSION_WHILE_RETURN_HOME_PAUSED]["id"],
+    )
+    schedule_return_to_home(
+        backend_url=backend_url, robot_id=return_home_paused_robot.robot_id
+    )
+    wait_for_robot_status(
+        backend_url=backend_url,
+        robot_name=MISSION_WHILE_RETURN_HOME_PAUSED,
+        expected_status="ReturningHome",
+        timeout=240,
+    )
+    pause_mission(backend_url=backend_url, robot_id=return_home_paused_robot.robot_id)
+    wait_for_robot_status(
+        backend_url=backend_url,
+        robot_name=MISSION_WHILE_RETURN_HOME_PAUSED,
+        expected_status="ReturnHomePaused",
+        timeout=240,
+    )
+    resuming_run: Dict = _schedule_dummy_mission(
+        armada, MISSION_WHILE_RETURN_HOME_PAUSED
     )
 
     # ------------------------------------------------------------------ outcomes
