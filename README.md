@@ -30,7 +30,7 @@ Robot fixtures explicitly register each ISAR instance through administrator-only
 `POST /robots`, using the test realm's `integration-tests` client after the installation
 has been seeded. Registration uses the container's ISAR ID, metadata, Docker-network alias
 and internal API port, never its host-mapped port. Robots start `Offline`; setup waits for
-telemetry to report `Home` before yielding. `IntegrationTest` remains restricted: the fixtures
+telemetry to report `Home` (or `Available` for a roster robot that boots away from home) before yielding. `IntegrationTest` remains restricted: the fixtures
 do not depend on MQTT auto-registration or MQTT host/port updates.
 
 MQTT needs no secret either. A CA, a broker certificate and a password per broker user are

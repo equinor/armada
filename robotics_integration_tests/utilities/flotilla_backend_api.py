@@ -439,9 +439,15 @@ def wait_for_database_to_be_populated(backend_url: str, timeout: int = 60) -> No
 
 
 def setup_robot_in_flotilla(
-    backend_url: str, robot_container: StreamLoggingDockerContainer
+    backend_url: str,
+    robot_container: StreamLoggingDockerContainer,
+    expected_status: str = "Home",
 ) -> Tuple[str, str]:
-    """Register with the test administrator before assigning an inspection area."""
+    """Register with the test administrator before assigning an inspection area.
+
+    Waits for telemetry to report expected_status. A robot that boots away from
+    home rests in Available rather than Home.
+    """
     env = robot_container.env
     installation_code_for_robot: str = env["ISAR_PLANT_SHORT_NAME"]
     response: Response = requests.post(
@@ -481,7 +487,7 @@ def setup_robot_in_flotilla(
     wait_for_robot_status(
         backend_url=backend_url,
         robot_name=env["ISAR_ROBOT_NAME"],
-        expected_status="Home",
+        expected_status=expected_status,
     )
     return robot_id, installation_code_for_robot
 
