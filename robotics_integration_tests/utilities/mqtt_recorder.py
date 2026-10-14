@@ -13,7 +13,6 @@ different scenarios against one stack, and each is verified from its own trace.
 
 import json
 import ssl
-import tarfile
 import tempfile
 import threading
 import time
@@ -23,47 +22,12 @@ from typing import Dict, List, Optional
 
 import paho.mqtt.client as mqtt
 from loguru import logger
-from testcontainers.core.container import DockerContainer
-
-# Absolute path of the CA certificate inside the flotilla-broker image. The
-# broker's mosquitto.conf refers to it relatively; the image has no WORKDIR, so
-# the effective location is the filesystem root.
-BROKER_CA_CERT_CONTAINER_PATH = "/mosquitto/config/certs/ca-cert.pem"
 
 # ISAR publishes everything under isar/<isar-id>/..., and the `isar` broker user
 # is granted `readwrite isar/#` by the broker's access_control file.
 ISAR_TOPIC_FILTER = "isar/#"
 
 _CONNECT_TIMEOUT_SECONDS = 30
-
-
-def _extract_ca_certificate(broker: DockerContainer, destination: Path) -> Path:
-    """Copy the broker's CA certificate out of its container.
-
-    The certificate lives in the flotilla repository, not this one, so it has to
-    be read from the image at run time rather than checked in and kept in sync.
-    """
-    bits, _ = broker.get_wrapped_container().get_archive(BROKER_CA_CERT_CONTAINER_PATH)
-
-    tar_path: Path = destination / "ca-cert.tar"
-    with open(tar_path, "wb") as tar_file:
-        for chunk in bits:
-            tar_file.write(chunk)
-
-    import tarfile
-
-    with tarfile.open(tar_path) as tar:
-        member = tar.getmember("ca-cert.pem")
-        extracted = tar.extractfile(member)
-        if extracted is None:
-            raise RuntimeError(
-                f"Could not read {BROKER_CA_CERT_CONTAINER_PATH} from the broker "
-                "container; the MQTT recorder cannot establish a TLS connection."
-            )
-        ca_path: Path = destination / "ca-cert.pem"
-        ca_path.write_bytes(extracted.read())
-
-    return ca_path
 
 
 class MqttRecorder:
@@ -95,9 +59,10 @@ class MqttRecorder:
         self._client.on_connect = self._on_connect
         self._client.on_message = self._on_message
 
-    def start(self, broker: DockerContainer) -> "MqttRecorder":
+    def start(self, ca_certificate: str) -> "MqttRecorder":
         self._temp_dir = tempfile.TemporaryDirectory(prefix="armada-mqtt-ca-")
-        ca_path: Path = _extract_ca_certificate(broker, Path(self._temp_dir.name))
+        ca_path: Path = Path(self._temp_dir.name) / "ca-cert.pem"
+        ca_path.write_text(ca_certificate)
 
         self._client.tls_set(ca_certs=str(ca_path), tls_version=ssl.PROTOCOL_TLS_CLIENT)
         # The broker's certificate is issued for the in-network alias "broker",

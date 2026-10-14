@@ -328,7 +328,7 @@ def teams_webhook_receiver(network: Network, test_id: str):
 
 
 @pytest.fixture
-def mqtt_recorder(flotilla_broker: FlotillaBroker):
+def mqtt_recorder(flotilla_broker: FlotillaBroker, mqtt_credentials: MqttCredentials):
     """Records every ISAR status and mission message published during a test.
 
     Ordered before the robot fixtures so that no transition is missed: ISAR
@@ -339,9 +339,9 @@ def mqtt_recorder(flotilla_broker: FlotillaBroker):
         host="localhost",
         port=int(flotilla_broker.broker.get_exposed_port(flotilla_broker.port)),
         username=ISAR_MQTT_USERNAME,
-        password=settings.ISAR_MQTT_PASSWORD,
+        password=mqtt_credentials.passwords[ISAR_MQTT_USERNAME],
     )
-    recorder.start(flotilla_broker.broker)
+    recorder.start(ca_certificate=mqtt_credentials.ca_certificate)
     try:
         yield recorder
     finally:
@@ -575,6 +575,7 @@ def _start_robot_roster(armada: Armada, roster, stack: ExitStack) -> Armada:
             create_isar_robot_container(
                 network=armada.network,
                 openid_config_url=armada.keycloak.internal_openid_config_url,
+                mqtt_credentials=armada.mqtt_credentials,
                 image=settings.ISAR_ROBOT_IMAGE,
                 name=scenario.name,
                 port=settings.ISAR_ROBOT_PORT,
@@ -598,7 +599,7 @@ def _start_robot_roster(armada: Armada, roster, stack: ExitStack) -> Armada:
 
         robot_id, installation_code = setup_robot_in_flotilla(
             backend_url=armada.flotilla_backend.backend_url,
-            robot_name=scenario.name,
+            robot_container=container,
         )
 
         armada.robots[scenario.name] = IsarRobot(
