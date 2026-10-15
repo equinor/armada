@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:e1ffd2a92ae84c1291bc1b6887501f8af98e6331e7af6d4c8d37168c5e87a64c
+FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:4ea6fe75dd36706bb6d8c3c293d4c4315840f5d76ea28ac97def77e3ec487fa5
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates postgresql-client jq \
