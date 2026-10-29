@@ -1,5 +1,7 @@
 # Validates EF Core migrations against a real PostgreSQL container to catch provider-specific SQL errors.
 # Runs "dotnet ef database update" to ensure the full migration history applies successfully.
+# On pull_request and merge_group events it also requires new migrations to be newer than the latest
+# migration on the target branch.
 
 name: Validate dotnet migrations against temporary database
 
@@ -46,6 +48,34 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+
+      # Checks out the scripts that belong to this reusable workflow, at the same commit as the workflow
+      - name: Checkout workflow scripts
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+        with:
+          repository: ${{ job.workflow_repository || 'equinor/armada' }}
+          ref: ${{ job.workflow_sha || 'main' }}
+          path: .armada-workflow-scripts
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      # New migrations must sort after the latest migration on the target branch. Otherwise fresh and
+      # existing databases apply migrations in different orders, e.g. when a migration created before
+      # another merged migration is merged afterwards without being regenerated
+      - name: Check migration order against target branch
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          MIGRATIONS_DIR: ${{ inputs.working_directory }}/Migrations
+        run: |
+          if [ -z "${BASE_SHA}" ]; then
+            echo "::notice::No target branch for event '${{ github.event_name }}', skipping migration order check"
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "${BASE_SHA}"
+          python3 .armada-workflow-scripts/.github/scripts/check_dotnet_migration_order.py \
+            --base "${BASE_SHA}" \
+            --head HEAD \
+            --migrations-dir "${MIGRATIONS_DIR}"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 #v5
