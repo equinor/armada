@@ -83,6 +83,7 @@ jobs:
           issue-number: ${{ needs.download.outputs.pr_number }}
           body: |
             :bell: Migrations changes detected :bell:
+            :warning: If you rebase onto a branch that has new migrations, regenerate your own unmerged migrations.
             :mega: After this PR is merged, remember to apply the migrations to the Development database by manually running the "Run database migrations (Development)" workflow from the Actions tab.
 
       - name: Add label
