@@ -54,6 +54,8 @@ def create_sara_container(
         .with_env("KeyVault__UseKeyVault", "false")
         .with_env("Database__postgresConnectionString", database_connection_string)
         .with_env("Storage__RawStorageAccount", settings.AZURITE_ACCOUNT)
+        .with_env("Storage__AnonStorageAccount", settings.AZURITE_ACCOUNT)
+        .with_env("Storage__VisStorageAccount", settings.AZURITE_ACCOUNT)
         .with_env(
             f"BlobStorage__{settings.AZURITE_ACCOUNT}__ConnectionString",
             raw_storage_connection_string,
