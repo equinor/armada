@@ -9,7 +9,7 @@ from robotics_integration_tests.utilities.mqtt_credentials import MqttCredential
 
 
 @pytest.mark.parametrize("account", [settings.AZURITE_ACCOUNT, "customtestaccount"])
-def test_all_workflow_outputs_use_configured_azurite_account(monkeypatch, account):
+def test_all_storage_accounts_use_configured_azurite_account(monkeypatch, account):
     monkeypatch.setattr(settings, "AZURITE_ACCOUNT", account)
     connection_string = (
         f"AccountName={account};BlobEndpoint=http://sara-raw:10000/{account};"
@@ -22,23 +22,9 @@ def test_all_workflow_outputs_use_configured_azurite_account(monkeypatch, accoun
         mqtt_credentials=MqttCredentials("", "", "", {"sara": "test-password"}),
     )
 
-    outputs = {
-        key: value
-        for key, value in container.env.items()
-        if key.startswith("Analysis__Workflows__")
-    }
-    assert outputs == {
-        f"Analysis__Workflows__{workflow}__OutputStorageAccount": account
-        for workflow in (
-            "anonymizer",
-            "rain-drop",
-            "fencilla",
-            "cloe",
-            "thermal-reading",
-            "copy-raw-to-visualized",
-        )
-    }
     assert container.env["Storage__RawStorageAccount"] == account
+    assert container.env["Storage__AnonStorageAccount"] == account
+    assert container.env["Storage__VisStorageAccount"] == account
     assert (
         container.env[f"BlobStorage__{account}__ConnectionString"] == connection_string
     )
