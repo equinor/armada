@@ -15,6 +15,10 @@
         "description": "Flotilla super admin (AccessRoleService.cs SUPER_ADMIN_ROLE_NAME)"
       },
       {
+        "name": "Role.ReadOnly.HUA",
+        "description": "Per-installation read-only role, Huldra"
+      },
+      {
         "name": "Role.User.HUA",
         "description": "Per-installation user role, Huldra"
       },
@@ -282,7 +286,7 @@
     {
       "clientId": "integration-tests-limited-role",
       "name": "Integration tests (insufficient role)",
-      "description": "Negative tests: holds Role.User.HUA only. Recognised but insufficient, so Flotilla answers 403 where a token with no roles at all gets 401.",
+      "description": "Negative tests: holds Role.ReadOnly.HUA only. Recognised but insufficient, so Flotilla answers 403 where a token with no roles at all gets 401.",
       "enabled": true,
       "publicClient": false,
       "serviceAccountsEnabled": true,
@@ -330,7 +334,7 @@
       "enabled": true,
       "serviceAccountClientId": "integration-tests-limited-role",
       "realmRoles": [
-        "Role.User.HUA"
+        "Role.ReadOnly.HUA"
       ]
     },
     {

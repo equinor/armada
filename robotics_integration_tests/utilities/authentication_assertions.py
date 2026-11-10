@@ -85,7 +85,7 @@ def assert_missing_role_is_rejected(
 ) -> None:
     """A token with the right audience but insufficient roles must be rejected.
 
-    The token holds Role.User.HUA rather than no roles at all: Flotilla answers
+    The token holds Role.ReadOnly.HUA rather than no roles at all: Flotilla answers
     403 for an insufficient role but 401 for an empty role set, so an empty one
     would prove something weaker.
     """
@@ -94,7 +94,7 @@ def assert_missing_role_is_rejected(
 
     assert response.status_code == expected_status, (
         f"{description}: {method} {url} returned {response.status_code} for a "
-        f"token holding only Role.User.HUA, expected {int(expected_status)}."
+        f"token holding only Role.ReadOnly.HUA, expected {int(expected_status)}."
     )
 
 
@@ -118,13 +118,13 @@ def assert_cannot_interfere_with_running_mission(
         description="Flotilla accepted a SARA token",
     )
 
-    # Correct audience, but a role that grants no access to this installation.
+    # Correct audience, but only read access to this installation.
     assert_missing_role_is_rejected(
-        method="GET",
-        url=f"{backend_url}/robots",
+        method="POST",
+        url=f"{backend_url}/robots/{robot.robot_id}/stop",
         scope=settings.FLOTILLA_SCOPE,
         expected_status=HTTPStatus.FORBIDDEN,
-        description="Flotilla granted access without a sufficient role",
+        description="Flotilla allowed stop without a sufficient role",
     )
 
     # A Flotilla token must not let anyone stop the robot directly.

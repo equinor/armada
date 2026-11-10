@@ -17,7 +17,7 @@ REALM = settings.KEYCLOAK_REALM
 INTEGRATION_TESTS_CLIENT = "integration-tests"
 INTEGRATION_TESTS_SECRET = "integration-tests-secret"
 
-# Holds Role.User.HUA only: recognised, but without Flotilla admin rights or
+# Holds Role.ReadOnly.HUA only: recognised, but without Flotilla write access or
 # ISAR's Mission.Control.
 LIMITED_ROLE_CLIENT = "integration-tests-limited-role"
 LIMITED_ROLE_SECRET = "integration-tests-limited-role-secret"
