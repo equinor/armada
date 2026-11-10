@@ -233,21 +233,6 @@ def is_mission_run_status(
     return True
 
 
-def add_access_role_to_database(
-    backend_url: str, access_level: str, installation_code: str, role_name: str
-):
-    response: Response = requests.post(
-        f"{backend_url}/access-roles",
-        json={
-            "installationCode": installation_code,
-            "roleName": role_name,
-            "accessLevel": access_level,
-        },
-        headers=_add_headers(),
-    )
-    response.raise_for_status()
-
-
 def add_plant_to_database(
     backend_url: str, installation_code: str, name: str, plant_code: str
 ):
@@ -358,13 +343,6 @@ default_inspection_areas: List[Tuple[str, str, str, Dict]] = [
     ("NLS", "NLS", "Northern Lights Area", default_area_polygon),
 ]
 
-# Populate default access roles
-default_access_roles: List[Tuple[str, str, str]] = [
-    ("HUA", "Role.User.HUA", "USER"),
-    ("KAA", "Role.User.KAA", "USER"),
-    ("NLS", "Role.User.NLS", "USER"),
-]
-
 
 def populate_database_with_minimum_models(backend_url: str) -> None:
     for installation_code, name in default_installations:
@@ -389,14 +367,6 @@ def populate_database_with_minimum_models(backend_url: str) -> None:
             polygon=polygon,
         )
 
-    for installation_code, role_name, access_level in default_access_roles:
-        add_access_role_to_database(
-            backend_url=backend_url,
-            access_level=access_level,
-            installation_code=installation_code,
-            role_name=role_name,
-        )
-
 
 def wait_for_database_to_be_populated(backend_url: str, timeout: int = 60) -> None:
     start_time: datetime = datetime.now()
@@ -416,9 +386,6 @@ def wait_for_database_to_be_populated(backend_url: str, timeout: int = 60) -> No
             inspection_areas: List[Dict] = _list_database_entries(
                 backend_url=backend_url, request_path="inspectionAreas"
             )
-            access_roles: List[Dict] = _list_database_entries(
-                backend_url=backend_url, request_path="access-roles"
-            )
         except Exception:
             logger.warning(
                 "Database has not been populated yet, will retry until timeout..."
@@ -430,10 +397,9 @@ def wait_for_database_to_be_populated(backend_url: str, timeout: int = 60) -> No
             len(installations) == len(default_installations)
             and len(plants) == len(default_plants)
             and len(inspection_areas) == len(default_inspection_areas)
-            and len(access_roles) == len(default_access_roles)
         ):
             logger.info(
-                "Database has been populated with default installations, plants, inspection areas and access roles"
+                "Database has been populated with default installations, plants and inspection areas"
             )
             return
 
