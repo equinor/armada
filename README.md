@@ -54,7 +54,7 @@ that holds it:
 | Client | Roles |
 | --- | --- |
 | `integration-tests` | every role the three services require |
-| `integration-tests-limited-role` | `Role.User.HUA` only — recognised, but insufficient |
+| `integration-tests-limited-role` | `Role.ReadOnly.HUA` only — recognised, but insufficient |
 | `integration-tests-no-role` | none |
 | `flotilla-test` | used by Flotilla for its downstream ISAR/SARA calls |
 
