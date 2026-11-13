@@ -19,6 +19,7 @@ from robotics_integration_tests.custom_containers.teams_webhook_receiver import 
     TeamsWebhookReceiver,
 )
 from robotics_integration_tests.utilities.mqtt_credentials import MqttCredentials
+from robotics_integration_tests.utilities.mqtt_recorder import MqttRecorder
 
 
 class Armada:
@@ -34,6 +35,7 @@ class Armada:
         self.sara_database: SaraDatabase | None = None
         self.teams_webhook_receiver: TeamsWebhookReceiver | None = None
         self.mqtt_credentials: MqttCredentials | None = None
+        self.mqtt_recorder: MqttRecorder | None = None
         self.robots: Dict[str, IsarRobot] = {}
 
     def log_startup_info(self) -> None:
