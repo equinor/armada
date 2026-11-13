@@ -37,14 +37,23 @@ if [ -n "${LOCAL_REPO_PATH:-}" ]; then
 else
   echo "Cloning $GIT_REPO @ $GIT_REF ..."
   if [ "$GIT_REF" = "latest" ]; then
-    BRANCH=$(curl -s ${GITHUB_TOKEN:+-H "Authorization: token $GITHUB_TOKEN"} \
-      "https://api.github.com/repos/$GIT_REPO/releases/latest" | jq -r .tag_name)
-    echo "Resolved latest to $BRANCH"
+    CURL_ARGS=(-fsS)
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+      CURL_ARGS+=(-H "Authorization: Bearer $GITHUB_TOKEN")
+    fi
+    REVISION=$(curl "${CURL_ARGS[@]}" \
+      "https://api.github.com/repos/$GIT_REPO/releases/latest" | jq -er '.tag_name | select(type == "string" and length > 0)')
+    echo "Resolved latest to $REVISION"
+  elif [ "$GIT_REF" = "dev" ]; then
+    REVISION="main"
   else
-    BRANCH="main"
+    REVISION="$GIT_REF"
   fi
   rm -rf /work/repo
-  git clone --depth 1 --branch "$BRANCH" "https://github.com/$GIT_REPO" /work/repo
+  git init /work/repo
+  git -C /work/repo remote add origin "https://github.com/$GIT_REPO"
+  git -C /work/repo fetch --depth 1 origin "$REVISION"
+  git -C /work/repo checkout --detach FETCH_HEAD
 fi
 
 cd /work/repo
