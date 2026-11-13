@@ -5,9 +5,19 @@ on:
     inputs:
       lane:
         description: "Which lane to run (dev or latest)"
-        required: true
+        required: false
         type: string
         default: "latest"
+      sara_image:
+        description: "Exact SARA image reference; provide sara_migrations_ref alongside it"
+        required: false
+        type: string
+        default: ""
+      sara_migrations_ref:
+        description: "SARA source tag or commit matching sara_image"
+        required: false
+        type: string
+        default: ""
     secrets:
         INTEGRATION_TEST_AZURE_CLIENT_SECRET:
           required: false
@@ -23,6 +33,17 @@ on:
         required: true
         type: string
         default: "latest"
+
+      sara_image:
+        description: "Exact SARA image reference; provide sara_migrations_ref alongside it"
+        required: false
+        type: string
+        default: ""
+      sara_migrations_ref:
+        description: "SARA source tag or commit matching sara_image"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -55,19 +76,32 @@ jobs:
 
       - name: Compose image references
         id: images
+        env:
+          TAG: ${{ inputs.lane }}
+          SARA_IMAGE_OVERRIDE: ${{ inputs.sara_image }}
+          SARA_MIGRATIONS_REF_OVERRIDE: ${{ inputs.sara_migrations_ref }}
         run: |
-          TAG="${{ inputs.lane }}"
-          REGISTRY="${{ env.REGISTRY }}"
+          set -euo pipefail
+          case "$TAG" in
+            dev|latest) ;;
+            *) echo "Expected dev or latest lane" >&2; exit 1 ;;
+          esac
+          if [[ -n "$SARA_IMAGE_OVERRIDE" && -z "$SARA_MIGRATIONS_REF_OVERRIDE" ]] ||
+             [[ -z "$SARA_IMAGE_OVERRIDE" && -n "$SARA_MIGRATIONS_REF_OVERRIDE" ]]; then
+            echo "Provide both sara_image and sara_migrations_ref, or neither" >&2
+            exit 1
+          fi
           {
             echo "registry=${REGISTRY}"
             echo "flotilla_backend=${REGISTRY}/${{ env.FLOTILLA_BACKEND_REPOSITORY }}:${TAG}"
             echo "flotilla_broker=${REGISTRY}/${{ env.FLOTILLA_BROKER_REPOSITORY }}:${TAG}"
             echo "isar_robot=${REGISTRY}/${{ env.ISAR_ROBOT_REPOSITORY }}:${TAG}"
-            echo "sara=${REGISTRY}/${{ env.SARA_REPOSITORY }}:${TAG}"
+            echo "sara=${SARA_IMAGE_OVERRIDE:-${REGISTRY}/${SARA_REPOSITORY}:${TAG}}"
             echo "postgres=${{ env.POSTGRESQL_IMAGE }}"
             echo "azurite=${{ env.AZURITE_IMAGE }}"
             echo "git_ref=${TAG}"
-          } >> $GITHUB_OUTPUT
+            echo "sara_git_ref=${SARA_MIGRATIONS_REF_OVERRIDE:-$TAG}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b #v8.1.0
@@ -89,6 +123,6 @@ jobs:
           SARA_IMAGE: ${{ steps.images.outputs.sara }}
           AZURITE_IMAGE: ${{ steps.images.outputs.azurite }}
           GIT_REPOSITORY_FOR_MIGRATIONS_REF: ${{ steps.images.outputs.git_ref }}
-          SARA_GIT_REPOSITORY_FOR_MIGRATIONS_REF: ${{ steps.images.outputs.git_ref }}
+          SARA_GIT_REPOSITORY_FOR_MIGRATIONS_REF: ${{ steps.images.outputs.sara_git_ref }}
 
         run: uv run --frozen pytest -s -n auto robotics_integration_tests
