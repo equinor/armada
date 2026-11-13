@@ -1,5 +1,7 @@
 import json
 import uuid
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, List
 
 from docker.models.networks import Network
 
@@ -8,6 +10,9 @@ from robotics_integration_tests.custom_containers.stream_logging_docker_containe
 )
 from robotics_integration_tests.settings.settings import settings
 from robotics_integration_tests.utilities.mqtt_credentials import MqttCredentials
+
+if TYPE_CHECKING:
+    from robotics_integration_tests.scenarios.steps import Step
 
 
 class IsarRobot:
@@ -28,6 +33,37 @@ class IsarRobot:
         self.installation_code: str = installation_code
 
 
+@dataclass
+class RobotScenario:
+    """One robot in a multi-robot test: its configuration and its steps.
+
+    Every value is sent to the robot. ``should_start_at_home``,
+    ``return_home_retry_limit`` and ``mission_battery_start_threshold`` default
+    to what the scenarios need rather than to ISAR's own defaults.
+    """
+
+    name: str
+    alias: str
+    should_fail_normal_task: bool = False
+    should_fail_return_home: bool = False
+    should_start_at_home: bool = True
+    return_home_retry_limit: int = 1
+    task_duration_in_seconds: float = 5.0
+    initial_battery_level: float = 75.0
+    return_home_delay_in_seconds: int = 10
+    # Robots discharge while away from home, and a long test can drift past
+    # ISAR's default 25 % and divert into recharging. Scenarios that are about
+    # battery set their own threshold.
+    mission_battery_start_threshold: float = 0.0
+    battery_recharge_threshold: float = 80.0
+    battery_publish_interval_in_seconds: float = 2.0
+    battery_poll_interval_in_seconds: float = 5.0
+    plant_short_name: str = "HUA"
+    plant_code: str = "Huldra"
+    blob_container: str = "hua"
+    steps: List["Step"] = field(default_factory=list)
+
+
 def create_isar_robot_container(
     network: Network,
     openid_config_url: str,
@@ -42,6 +78,16 @@ def create_isar_robot_container(
     should_fail_return_home: bool = False,
     return_home_retry_limit: int = 5,
     should_start_at_home: bool = False,
+    task_duration_in_seconds: float = 5.0,
+    initial_battery_level: float = 75.0,
+    return_home_delay_in_seconds: int = 10,
+    mission_battery_start_threshold: float = 25.0,
+    battery_recharge_threshold: float = 80.0,
+    battery_publish_interval_in_seconds: float = 2.0,
+    battery_poll_interval_in_seconds: float = 5.0,
+    plant_short_name: str = "HUA",
+    plant_code: str = "Huldra",
+    blob_container: str = "hua",
     test_id: str = "",
 ) -> StreamLoggingDockerContainer:
 
@@ -79,9 +125,9 @@ def create_isar_robot_container(
             "ISAR_BLOB_STORAGE_CONNECTION_STRING_METADATA",
             blob_storage_connection_string_metadata,
         )
-        .with_env("ISAR_BLOB_CONTAINER", "hua")
-        .with_env("ISAR_PLANT_CODE", "Huldra")
-        .with_env("ISAR_PLANT_SHORT_NAME", "HUA")
+        .with_env("ISAR_BLOB_CONTAINER", blob_container)
+        .with_env("ISAR_PLANT_CODE", plant_code)
+        .with_env("ISAR_PLANT_SHORT_NAME", plant_short_name)
         .with_env("ISAR_API_HOST_VIEWED_EXTERNALLY", alias)
         .with_env("ISAR_API_PORT", port)
         .with_env("ISAR_ROBOT_NAME", name)
@@ -112,5 +158,21 @@ def create_isar_robot_container(
         .with_env("ISAR_RETURN_HOME_RETRY_LIMIT", return_home_retry_limit)
         .with_env("ROBOT_SHOULD_START_AT_HOME", str(should_start_at_home).lower())
         .with_env("ISAR_ISAR_ID", str(uuid.uuid4()))
+        .with_env("ROBOT_MISSION_SIMULATION_TASK_DURATION", task_duration_in_seconds)
+        .with_env("ROBOT_INITIAL_BATTERY_LEVEL", initial_battery_level)
+        .with_env("ISAR_RETURN_HOME_DELAY", return_home_delay_in_seconds)
+        .with_env(
+            "ISAR_ROBOT_MISSION_BATTERY_START_THRESHOLD",
+            mission_battery_start_threshold,
+        )
+        .with_env("ISAR_ROBOT_BATTERY_RECHARGE_THRESHOLD", battery_recharge_threshold)
+        .with_env(
+            "ROBOT_ROBOT_BATTERY_PUBLISH_INTERVAL",
+            battery_publish_interval_in_seconds,
+        )
+        .with_env(
+            "ISAR_ROBOT_API_BATTERY_POLL_INTERVAL", battery_poll_interval_in_seconds
+        )
     )
+
     return container

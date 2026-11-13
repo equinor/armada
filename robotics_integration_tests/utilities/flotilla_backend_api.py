@@ -204,6 +204,13 @@ def get_robot_by_name(backend_url: str, name: str) -> Dict:
     raise RuntimeError(f"Robot with name '{name}' not found")
 
 
+def get_robot_statuses(backend_url: str) -> Dict[str, str]:
+    """The current status of every robot, by robot name, from a single request."""
+    response: Response = requests.get(f"{backend_url}/robots", headers=_add_headers())
+    response.raise_for_status()
+    return {robot.get("name"): robot.get("status") for robot in response.json()}
+
+
 def is_robot_status(backend_url: str, robot_name: str, expected_status: str) -> bool:
     robot: Dict = get_robot_by_name(backend_url=backend_url, name=robot_name)
     current_status: str = robot.get("status")
@@ -595,6 +602,46 @@ def wait_for_robot_status(
             continue
 
 
+def schedule_dummy_mission(
+    backend_url: str, robot_id: str, installation_code: str
+) -> Dict:
+    mission_payload: Dict = get_dummy_mission_payload_with_installation(
+        installation_code
+    )
+    mission: Dict = create_mission(backend_url=backend_url, payload=mission_payload)
+    mission_run: Dict = schedule_mission(
+        backend_url=backend_url, robot_id=robot_id, mission_id=mission["id"]
+    )
+    logger.info(
+        f"Scheduled mission {mission['id']} with run id {mission_run['id']} "
+        f"on robot {robot_id}"
+    )
+    return mission_run
+
+
+def wait_until_idle_away_from_home(
+    backend_url: str, robot_name: str, mission_run_id: str, timeout: int = 240
+) -> None:
+    """Wait for a positioning mission to finish and leave the robot Available.
+
+    Robots boot at home. A scenario that needs one idle somewhere else first runs
+    a mission on it; when that ends ISAR rests in AwaitNextMission until its
+    RETURN_HOME_DELAY expires, and that countdown starts here rather than at boot.
+    """
+    wait_for_mission_run_status(
+        backend_url=backend_url,
+        mission_run_id=mission_run_id,
+        expected_status="Successful",
+        timeout=timeout,
+    )
+    wait_for_robot_status(
+        backend_url=backend_url,
+        robot_name=robot_name,
+        expected_status="Available",
+        timeout=timeout,
+    )
+
+
 def wait_for_all_mission_run_statuses(
     backend_url: str,
     mission_run_expectations: Dict[str, str],
@@ -703,12 +750,15 @@ def wait_for_all_robot_statuses(
     return results
 
 
-def pause_mission(backend_url: str, robot_id: str) -> None:
-    url: str = f"{backend_url}/robots/{robot_id}/pause"
-    response: Response = requests.post(
-        url,
-        headers=_add_headers(),
-    )
+def _post_robot_command(url: str, description: str) -> None:
+    """POST a Flotilla robot command and fail loudly with the problem details.
+
+    Flotilla answers these commands with 204 and a ProblemDetails body on
+    failure, so surfacing the body is the difference between a debuggable failure
+    and a bare status code.
+    """
+    response: Response = requests.post(url, headers=_add_headers())
+
     if not response.ok:
         body = response.text
         try:
@@ -716,30 +766,73 @@ def pause_mission(backend_url: str, robot_id: str) -> None:
         except Exception:
             problem = None
         raise AssertionError(
-            f"POST {url} returned {response.status_code}\n"
+            f"{description} failed: POST {url} returned {response.status_code}\n"
             f"Response headers: {dict(response.headers)}\n"
             f"Response body:\n{body}\n"
             f"Parsed JSON (if any):\n{problem}"
         )
-    response.raise_for_status()
+
+    logger.info(f"{description} succeeded")
+
+
+def pause_mission(backend_url: str, robot_id: str) -> None:
+    _post_robot_command(
+        f"{backend_url}/robots/{robot_id}/pause", f"Pausing mission on robot {robot_id}"
+    )
 
 
 def resume_mission(backend_url: str, robot_id: str) -> None:
-    url = str(f"{backend_url}/robots/{robot_id}/resume")
-    response: Response = requests.post(
-        url,
-        headers=_add_headers(),
+    _post_robot_command(
+        f"{backend_url}/robots/{robot_id}/resume",
+        f"Resuming mission on robot {robot_id}",
     )
-    if not response.ok:
-        body = response.text
-        try:
-            problem = response.json()
-        except Exception:
-            problem = None
-        raise AssertionError(
-            f"POST {url} returned {response.status_code}\n"
-            f"Response headers: {dict(response.headers)}\n"
-            f"Response body:\n{body}\n"
-            f"Parsed JSON (if any):\n{problem}"
-        )
-    response.raise_for_status()
+
+
+def stop_mission(backend_url: str, robot_id: str) -> None:
+    _post_robot_command(
+        f"{backend_url}/robots/{robot_id}/stop",
+        f"Stopping mission on robot {robot_id}",
+    )
+
+
+def schedule_return_to_home(backend_url: str, robot_id: str) -> None:
+    _post_robot_command(
+        f"{backend_url}/return-to-home/schedule-return-to-home/{robot_id}",
+        f"Scheduling return to home for robot {robot_id}",
+    )
+
+
+def set_maintenance_mode(backend_url: str, robot_id: str) -> None:
+    _post_robot_command(
+        f"{backend_url}/robots/set-maintenance-mode/{robot_id}",
+        f"Setting maintenance mode on robot {robot_id}",
+    )
+
+
+def release_maintenance_mode(backend_url: str, robot_id: str) -> None:
+    _post_robot_command(
+        f"{backend_url}/robots/release-maintenance-mode/{robot_id}",
+        f"Releasing robot {robot_id} from maintenance mode",
+    )
+
+
+def send_all_robots_to_lockdown(backend_url: str, installation_code: str) -> None:
+    """Trigger lockdown for a whole installation.
+
+    Flotilla has no per-robot lockdown endpoint: lockdown is an installation-wide
+    emergency action, which is also how an operator invokes it. Robots on the
+    installation each enter lockdown from whatever state they are currently in.
+    """
+    _post_robot_command(
+        f"{backend_url}/emergency-action/{installation_code}"
+        "/abort-current-missions-and-send-all-robots-to-safe-zone",
+        f"Sending all robots on {installation_code} to lockdown",
+    )
+
+
+def clear_emergency_state(backend_url: str, installation_code: str) -> None:
+    """Release a whole installation from lockdown."""
+    _post_robot_command(
+        f"{backend_url}/emergency-action/{installation_code}/clear-emergency-state",
+        f"Clearing emergency state on {installation_code}",
+    )
