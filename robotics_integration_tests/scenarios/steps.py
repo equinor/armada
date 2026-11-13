@@ -8,19 +8,28 @@ from typing import Callable, Deque, Dict, List, Optional
 from loguru import logger
 
 from robotics_integration_tests.armada import Armada
-from robotics_integration_tests.custom_containers.isar import IsarRobot, RobotScenario
+from robotics_integration_tests.custom_containers.isar import IsarRobot, RobotConfig
 from robotics_integration_tests.utilities import flotilla_backend_api as flotilla
 
 POLL_INTERVAL_IN_SECONDS: float = 1.0
 
 STATUSES_A_ROBOT_RESTS_IN = frozenset(
-    {"Home", "Paused", "ReturnHomePaused", "Lockdown", "Maintenance"}
-    | {"InterventionNeeded"}
+    {
+        "Home",
+        "Paused",
+        "ReturnHomePaused",
+        "Lockdown",
+        "Maintenance",
+        "InterventionNeeded",
+    }
 )
-# Available lasts for the return-home delay, ReturningHome for the return-home
-# mission, and the recharging statuses until the battery is charged.
 STATUSES_THAT_LAST_FOR_SEVERAL_POLLS = frozenset(
-    {"Available", "ReturningHome", "Recharging", "RechargingWithMission"}
+    {
+        "Available",  # for the return-home delay
+        "ReturningHome",  # for the return-home mission
+        "Recharging",  # until the battery is charged
+        "RechargingWithMission",
+    }
 )
 POLLABLE_ROBOT_STATUSES = (
     STATUSES_A_ROBOT_RESTS_IN | STATUSES_THAT_LAST_FOR_SEVERAL_POLLS
@@ -58,14 +67,46 @@ Action = Callable[[RobotContext], None]
 class Step:
     wait_for: Condition
     then: Optional[Action] = None
-    # Counted from when the robot's previous step completed.
-    timeout_in_seconds: float = 240.0
+    # Counted from when the robot's previous step completed. Defaults to the
+    # scenario's step_timeout_in_seconds.
+    timeout_in_seconds: Optional[float] = None
+
+
+@dataclass
+class RobotScenario(RobotConfig):
+    """One robot in a multi-robot test: its configuration and its steps."""
+
+    should_start_at_home: bool = True
+    return_home_retry_limit: int = 1
+    # Robots discharge while away from home, and a long test can drift past
+    # ISAR's default 25 % and divert into recharging. Scenarios that are about
+    # battery set their own threshold.
+    mission_battery_start_threshold: float = 0.0
+    # The ISAR states the steps are designed to reach. Reported next to what the
+    # robot actually did, never asserted.
+    drives_isar_through: str = ""
+    steps: List[Step] = field(default_factory=list)
+    step_timeout_in_seconds: float = 240.0
 
 
 immediately = Condition("immediately", lambda context: True)
 
 
-def robot_status(expected_status: str) -> Condition:
+def do(action: Action) -> Step:
+    return Step(immediately, then=action)
+
+
+def when(
+    condition: Condition, action: Action, timeout_in_seconds: Optional[float] = None
+) -> Step:
+    return Step(condition, then=action, timeout_in_seconds=timeout_in_seconds)
+
+
+def wait_for(condition: Condition, timeout_in_seconds: Optional[float] = None) -> Step:
+    return Step(condition, timeout_in_seconds=timeout_in_seconds)
+
+
+def robot_is(expected_status: str) -> Condition:
     if expected_status not in POLLABLE_ROBOT_STATUSES:
         raise ValueError(
             f"'{expected_status}' can pass between two polls of Flotilla. Wait "
@@ -73,33 +114,30 @@ def robot_status(expected_status: str) -> Condition:
             f"{sorted(POLLABLE_ROBOT_STATUSES)}."
         )
     return Condition(
-        f"robot status {expected_status}",
+        f"robot is {expected_status}",
         lambda context: context.status == expected_status,
     )
 
 
-robot_is_idle_away_from_home = robot_status("Available")
+robot_is_idle_away_from_home = robot_is("Available")
 
 
-def mission_status(expected_status: str, run: int = -1) -> Condition:
-    """The status of a mission run this robot scheduled, by default its latest."""
-
-    def is_met(context: RobotContext) -> bool:
-        mission_run: Dict = flotilla.get_mission_run_by_id(
-            backend_url=context.backend_url,
-            mission_run_id=context.mission_runs[run]["id"],
-        )
-        return mission_run.get("status") == expected_status
-
-    return Condition(f"mission run [{run}] status {expected_status}", is_met)
-
-
-def _second_task_of_latest_mission_is_in_progress(context: RobotContext) -> bool:
-    mission_run: Dict = flotilla.get_mission_run_by_id(
+def _latest_mission_run(context: RobotContext) -> Dict:
+    return flotilla.get_mission_run_by_id(
         backend_url=context.backend_url,
         mission_run_id=context.mission_runs[-1]["id"],
     )
-    return mission_run["tasks"][1].get("status") == "InProgress"
+
+
+def latest_mission_is(expected_status: str) -> Condition:
+    return Condition(
+        f"latest mission is {expected_status}",
+        lambda context: _latest_mission_run(context).get("status") == expected_status,
+    )
+
+
+def _second_task_of_latest_mission_is_in_progress(context: RobotContext) -> bool:
+    return _latest_mission_run(context)["tasks"][1].get("status") == "InProgress"
 
 
 mission_is_under_way_with_tasks_left = Condition(
@@ -141,6 +179,7 @@ def release_maintenance_mode(context: RobotContext) -> None:
 @dataclass
 class _Progress:
     context: RobotContext
+    scenario: RobotScenario
     remaining: Deque[Step]
     total: int
     step_started: float
@@ -185,13 +224,22 @@ def _advance(progress: _Progress) -> None:
             is_met = False
 
         if not is_met:
-            waited: float = time.monotonic() - progress.step_started
-            if waited > step.timeout_in_seconds:
+            timeout: float = (
+                step.timeout_in_seconds
+                if step.timeout_in_seconds is not None
+                else progress.scenario.step_timeout_in_seconds
+            )
+            if time.monotonic() - progress.step_started > timeout:
                 progress.failure = (
                     f"{progress.position}: '{step.wait_for.description}' was not "
-                    f"met within {step.timeout_in_seconds:g}s. "
+                    f"met within {timeout:g}s. "
                     f"Statuses observed: {context.observed_statuses}"
                 )
+                if progress.scenario.drives_isar_through:
+                    progress.failure += (
+                        f". Meant to drive ISAR through: "
+                        f"{progress.scenario.drives_isar_through}"
+                    )
             return
 
         logger.info(f"[{name}] {progress.position}: {step.wait_for.description}")
@@ -223,6 +271,7 @@ def advance_each_robot_through_its_own_steps(
     progress_by_robot: Dict[str, _Progress] = {
         scenario.name: _Progress(
             context=RobotContext(armada=armada, robot=armada.robots[scenario.name]),
+            scenario=scenario,
             remaining=deque(scenario.steps),
             total=len(scenario.steps),
             step_started=started,

@@ -15,8 +15,6 @@ import json
 import ssl
 import tempfile
 import threading
-import time
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -31,24 +29,20 @@ _CONNECT_TIMEOUT_SECONDS = 30
 
 
 class MqttRecorder:
-    """Subscribes to ISAR's topics and records status and mission transitions.
+    """Subscribes to ISAR's status topics and records each robot's transitions.
 
     Consecutive duplicate statuses are collapsed. ISAR republishes its status on
     every state machine iteration (roughly ten times a second), so without this a
-    trace would be tens of thousands of entries long and unreadable in a failure
-    message.
+    trace would be tens of thousands of entries long and unreadable.
     """
 
     def __init__(self, host: str, port: int, username: str, password: str) -> None:
         self._host = host
         self._port = port
-        self._username = username
-        self._password = password
 
         self._lock = threading.Lock()
         self._connected = threading.Event()
         self._state_traces: Dict[str, List[str]] = {}
-        self._mission_traces: Dict[str, List[str]] = {}
         self._temp_dir: Optional[tempfile.TemporaryDirectory] = None
 
         self._client = mqtt.Client(
@@ -100,35 +94,24 @@ class MqttRecorder:
         self._connected.set()
 
     def _on_message(self, client, userdata, message) -> None:
-        topic_parts: List[str] = message.topic.split("/")
         # isar/<isar-id>/<topic-name>[/<entity-id>]
-        if len(topic_parts) < 3:
-            return
-        topic_name: str = topic_parts[2]
-
-        if topic_name not in ("status", "mission"):
+        topic_parts: List[str] = message.topic.split("/")
+        if len(topic_parts) < 3 or topic_parts[2] != "status":
             return
 
         try:
             payload: Dict = json.loads(message.payload.decode())
-        except ValueError, UnicodeDecodeError:
+        except ValueError:
             logger.warning(f"MQTT recorder could not decode payload on {message.topic}")
             return
 
-        status = payload.get("status")
-        if status is None:
+        robot_name: Optional[str] = payload.get("robot_name")
+        status: Optional[str] = payload.get("status")
+        if robot_name is None or status is None:
             return
 
         with self._lock:
-            if topic_name == "status":
-                key = payload.get("robot_name")
-                trace = self._state_traces.setdefault(key, [])
-            else:
-                key = payload.get("mission_id")
-                trace = self._mission_traces.setdefault(key, [])
-
-            if key is None:
-                return
+            trace: List[str] = self._state_traces.setdefault(robot_name, [])
             if not trace or trace[-1] != status:
                 trace.append(status)
 
@@ -137,85 +120,6 @@ class MqttRecorder:
         with self._lock:
             return list(self._state_traces.get(robot_name, []))
 
-    def mission_status_trace(self, mission_id: str) -> List[str]:
-        """Ordered mission statuses seen for *mission_id*, duplicates collapsed."""
-        with self._lock:
-            return list(self._mission_traces.get(mission_id, []))
-
     def recorded_robot_names(self) -> List[str]:
         with self._lock:
             return sorted(self._state_traces)
-
-    def mark(self, robot_name: str) -> int:
-        """Return a marker for the current end of *robot_name*'s trace.
-
-        Pass it back to :meth:`wait_for_state` as ``since`` to wait for the *next*
-        occurrence of a state rather than matching one the robot already passed
-        through. Needed whenever a robot legitimately revisits a state, such as
-        returning to Monitor after a lockdown.
-        """
-        with self._lock:
-            return len(self._state_traces.get(robot_name, []))
-
-    def wait_for_state(
-        self, robot_name: str, expected_state: str, timeout: int = 120, since: int = 0
-    ) -> None:
-        """Block until *robot_name* has been observed in *expected_state*.
-
-        Unlike Flotilla polling this cannot miss a state the robot has already
-        passed through, so it is safe to call after the fact. Pass *since* (from
-        :meth:`mark`) to ignore everything before a given point.
-        """
-        deadline: datetime = datetime.now() + timedelta(seconds=timeout)
-        while datetime.now() < deadline:
-            if expected_state in self.state_trace(robot_name)[since:]:
-                return
-            time.sleep(0.5)
-
-        raise AssertionError(
-            f"Robot '{robot_name}' was never observed in state '{expected_state}' "
-            f"within {timeout}s (searching from index {since}). "
-            f"Observed trace: {self.state_trace(robot_name)}"
-        )
-
-    def wait_for_mission_status(
-        self, mission_id: str, expected_status: str, timeout: int = 120
-    ) -> None:
-        deadline: datetime = datetime.now() + timedelta(seconds=timeout)
-        while datetime.now() < deadline:
-            if expected_status in self.mission_status_trace(mission_id):
-                return
-            time.sleep(0.5)
-
-        raise AssertionError(
-            f"Mission '{mission_id}' never reached status '{expected_status}' within "
-            f"{timeout}s. Observed trace: {self.mission_status_trace(mission_id)}"
-        )
-
-    def assert_visited_in_order(
-        self, robot_name: str, expected_states: List[str]
-    ) -> None:
-        """Assert *expected_states* appear in the trace, in order.
-
-        This is a subsequence check rather than an equality check: unrelated
-        states are allowed in between. Asserting the exact trace would make every
-        test fail the moment ISAR gains a state that is irrelevant to it.
-        """
-        trace: List[str] = self.state_trace(robot_name)
-
-        remaining: List[str] = list(expected_states)
-        for state in trace:
-            if remaining and state == remaining[0]:
-                remaining.pop(0)
-
-        if remaining:
-            matched = len(expected_states) - len(remaining)
-            raise AssertionError(
-                f"Robot '{robot_name}' did not pass through the expected states in "
-                f"order.\n"
-                f"  Expected (as a subsequence): {expected_states}\n"
-                f"  Matched the first {matched}, then failed to find: {remaining[0]}\n"
-                f"  Observed trace: {trace}"
-            )
-
-        logger.info(f"Robot '{robot_name}' passed through {expected_states} in order")

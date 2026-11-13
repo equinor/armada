@@ -3,7 +3,8 @@
 from typing import Dict
 
 from robotics_integration_tests.armada import Armada
-from robotics_integration_tests.custom_containers.isar import IsarRobot, RobotScenario
+from robotics_integration_tests.custom_containers.isar import KAARSTO, IsarRobot
+from robotics_integration_tests.scenarios.steps import RobotScenario
 from robotics_integration_tests.utilities.flotilla_backend_api import (
     clear_emergency_state,
     get_robot_statuses,
@@ -23,10 +24,7 @@ SHORT_TASK_DURATION_SECONDS = 5.0
 # the window for the test to trigger lockdown before ISAR sends the robot home.
 RETURN_HOME_DELAY_THAT_LETS_THE_TEST_GO_FIRST_SECONDS = 30
 
-# Seeded by populate_database_with_minimum_models.
-LOCKED_DOWN_INSTALLATION_CODE = "KAA"
-LOCKED_DOWN_PLANT_CODE = "Kårstø"
-LOCKED_DOWN_BLOB_CONTAINER = LOCKED_DOWN_INSTALLATION_CODE.lower()
+LOCKED_DOWN_PLANT = KAARSTO
 
 LOCKDOWN_WHILE_IDLE = "LockdownWhileIdle"
 LOCKDOWN_DURING_MISSION = "LockdownDuringMission"
@@ -35,34 +33,27 @@ OTHER_PLANT_DURING_MISSION = "OtherPlantDuringMission"
 
 
 ROSTER = [
-    # AwaitNextMission -> GoingToLockdown -> Lockdown. A robot that is already
-    # home enters Lockdown directly, so this one is sent away first.
+    # A robot that is already home enters Lockdown directly, so this one is
+    # sent away first.
     RobotScenario(
         name=LOCKDOWN_WHILE_IDLE,
-        alias="isar_lockdown_while_idle",
+        drives_isar_through="AwaitNextMission -> GoingToLockdown -> Lockdown",
         task_duration_in_seconds=SHORT_TASK_DURATION_SECONDS,
         return_home_delay_in_seconds=RETURN_HOME_DELAY_THAT_LETS_THE_TEST_GO_FIRST_SECONDS,
-        plant_short_name=LOCKED_DOWN_INSTALLATION_CODE,
-        plant_code=LOCKED_DOWN_PLANT_CODE,
-        blob_container=LOCKED_DOWN_BLOB_CONTAINER,
+        plant=LOCKED_DOWN_PLANT,
     ),
-    # Monitor -> StoppingGoToLockdown -> GoingToLockdownWithMission ->
-    # LockdownWithMission, then the mission is resumed
     RobotScenario(
         name=LOCKDOWN_DURING_MISSION,
-        alias="isar_lockdown_during_mission",
+        drives_isar_through=(
+            "Monitor -> StoppingGoToLockdown -> GoingToLockdownWithMission -> "
+            "LockdownWithMission, then the mission is resumed"
+        ),
         task_duration_in_seconds=TASK_DURATION_THAT_LEAVES_TIME_TO_INTERFERE_SECONDS,
-        plant_short_name=LOCKED_DOWN_INSTALLATION_CODE,
-        plant_code=LOCKED_DOWN_PLANT_CODE,
-        blob_container=LOCKED_DOWN_BLOB_CONTAINER,
+        plant=LOCKED_DOWN_PLANT,
     ),
-    RobotScenario(
-        name=OTHER_PLANT_WHILE_IDLE,
-        alias="isar_other_plant_while_idle",
-    ),
+    RobotScenario(name=OTHER_PLANT_WHILE_IDLE),
     RobotScenario(
         name=OTHER_PLANT_DURING_MISSION,
-        alias="isar_other_plant_during_mission",
         task_duration_in_seconds=TASK_DURATION_THAT_LEAVES_TIME_TO_INTERFERE_SECONDS,
     ),
 ]
@@ -77,10 +68,11 @@ def _schedule_dummy_mission(backend_url: str, robot: IsarRobot) -> Dict:
 
 
 def _assert_robots_are_on_two_plants(armada: Armada) -> None:
+    locked_down: str = LOCKED_DOWN_PLANT.installation_code
     for name in (LOCKDOWN_WHILE_IDLE, LOCKDOWN_DURING_MISSION):
-        assert armada.robots[name].installation_code == LOCKED_DOWN_INSTALLATION_CODE
+        assert armada.robots[name].installation_code == locked_down
     for name in (OTHER_PLANT_WHILE_IDLE, OTHER_PLANT_DURING_MISSION):
-        assert armada.robots[name].installation_code != LOCKED_DOWN_INSTALLATION_CODE
+        assert armada.robots[name].installation_code != locked_down
 
 
 def _assert_only_the_locked_down_plant_is_in_lockdown(backend_url: str) -> None:
@@ -121,7 +113,8 @@ def lock_down_one_plant_and_verify_the_other_carries_on(armada: Armada) -> None:
         )
 
     send_all_robots_to_lockdown(
-        backend_url=backend_url, installation_code=LOCKED_DOWN_INSTALLATION_CODE
+        backend_url=backend_url,
+        installation_code=LOCKED_DOWN_PLANT.installation_code,
     )
     wait_for_all_robot_statuses(
         backend_url=backend_url,
@@ -148,7 +141,8 @@ def lock_down_one_plant_and_verify_the_other_carries_on(armada: Armada) -> None:
     _assert_only_the_locked_down_plant_is_in_lockdown(backend_url)
 
     clear_emergency_state(
-        backend_url=backend_url, installation_code=LOCKED_DOWN_INSTALLATION_CODE
+        backend_url=backend_url,
+        installation_code=LOCKED_DOWN_PLANT.installation_code,
     )
 
     # Flotilla shows Lockdown and LockdownWithMission alike. Only the latter has

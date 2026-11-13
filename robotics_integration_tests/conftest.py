@@ -2,9 +2,10 @@ import os
 import subprocess
 import time
 import uuid
+from collections import Counter
 from contextlib import ExitStack
 from datetime import datetime
-from typing import Dict
+from typing import Dict, List
 
 # Disable the testcontainers Reaper (Ryuk) before any testcontainers import.
 # Ryuk is started lazily on the first container.start() call and queries its
@@ -34,7 +35,9 @@ from robotics_integration_tests.custom_containers.flotilla_backend import (
 from robotics_integration_tests.custom_containers.isar import (
     create_isar_robot_container,
     IsarRobot,
+    RobotConfig,
 )
+from robotics_integration_tests.scenarios.steps import RobotScenario
 from robotics_integration_tests.custom_containers.migrations_runner import (
     create_migrations_runner_container,
     create_sara_migrations_runner_container,
@@ -498,9 +501,10 @@ def armada_with_single_successful_robot(armada_without_robots: Armada):
         openid_config_url=armada.keycloak.internal_openid_config_url,
         mqtt_credentials=armada.mqtt_credentials,
         image=settings.ISAR_ROBOT_IMAGE,
-        name=settings.ISAR_ROBOT_NAME,
+        config=RobotConfig(
+            name=settings.ISAR_ROBOT_NAME, alias=settings.ISAR_ROBOT_ALIAS
+        ),
         port=settings.ISAR_ROBOT_PORT,
-        alias=settings.ISAR_ROBOT_ALIAS,
         blob_storage_connection_string_data=blob_conn_data,
         blob_storage_connection_string_metadata=blob_conn_metadata,
         test_id=armada.test_id,
@@ -534,12 +538,14 @@ def armada_with_single_failing_robot(armada_without_robots: Armada):
         openid_config_url=armada.keycloak.internal_openid_config_url,
         mqtt_credentials=armada.mqtt_credentials,
         image=settings.ISAR_ROBOT_IMAGE,
-        name=settings.ISAR_ROBOT_NAME,
+        config=RobotConfig(
+            name=settings.ISAR_ROBOT_NAME,
+            alias=settings.ISAR_ROBOT_ALIAS,
+            should_fail_normal_task=True,
+        ),
         port=settings.ISAR_ROBOT_PORT,
-        alias=settings.ISAR_ROBOT_ALIAS,
         blob_storage_connection_string_data=blob_conn_data,
         blob_storage_connection_string_metadata=blob_conn_metadata,
-        should_fail_normal_task=True,
         test_id=armada.test_id,
     ) as isar_robot:
 
@@ -561,40 +567,46 @@ def armada_with_single_failing_robot(armada_without_robots: Armada):
         yield armada
 
 
-def _start_robot_roster(armada: Armada, roster, stack: ExitStack) -> Armada:
-    """Start one ISAR container per scenario and register each with Flotilla.
+def _assert_roster_can_share_one_armada(roster: List[RobotScenario]) -> None:
+    for attribute in ("name", "alias"):
+        duplicates = [
+            value
+            for value, count in Counter(getattr(s, attribute) for s in roster).items()
+            if count > 1
+        ]
+        assert not duplicates, f"Duplicate robot {attribute}s: {duplicates}"
 
-    Shared by every multi-robot fixture so that adding a scenario is a matter of
-    describing it, not of copying container plumbing.
-    """
+    names = [scenario.name for scenario in roster]
+    overlapping = [(a, b) for a in names for b in names if a != b and a in b]
+    assert not overlapping, (
+        f"Teams notifications are matched to a robot by substring, but these "
+        f"names are contained in other names: {overlapping}"
+    )
+
+
+def _start_robot_roster(
+    armada: Armada, roster: List[RobotScenario], stack: ExitStack
+) -> Armada:
+    """Start one ISAR container per scenario and register each with Flotilla."""
+    _assert_roster_can_share_one_armada(roster)
     blob_conn_data, blob_conn_metadata = _blob_connection_strings(armada)
 
     for scenario in roster:
+        if scenario.drives_isar_through:
+            logger.info(
+                f"[{scenario.name}] is meant to drive ISAR through: "
+                f"{scenario.drives_isar_through}"
+            )
         container = stack.enter_context(
             create_isar_robot_container(
                 network=armada.network,
                 openid_config_url=armada.keycloak.internal_openid_config_url,
                 mqtt_credentials=armada.mqtt_credentials,
+                config=scenario,
                 image=settings.ISAR_ROBOT_IMAGE,
-                name=scenario.name,
                 port=settings.ISAR_ROBOT_PORT,
-                alias=scenario.alias,
                 blob_storage_connection_string_data=blob_conn_data,
                 blob_storage_connection_string_metadata=blob_conn_metadata,
-                should_fail_normal_task=scenario.should_fail_normal_task,
-                should_fail_return_home=scenario.should_fail_return_home,
-                return_home_retry_limit=scenario.return_home_retry_limit,
-                should_start_at_home=scenario.should_start_at_home,
-                task_duration_in_seconds=scenario.task_duration_in_seconds,
-                initial_battery_level=scenario.initial_battery_level,
-                return_home_delay_in_seconds=scenario.return_home_delay_in_seconds,
-                mission_battery_start_threshold=scenario.mission_battery_start_threshold,
-                battery_recharge_threshold=scenario.battery_recharge_threshold,
-                battery_publish_interval_in_seconds=scenario.battery_publish_interval_in_seconds,
-                battery_poll_interval_in_seconds=scenario.battery_poll_interval_in_seconds,
-                plant_short_name=scenario.plant_short_name,
-                plant_code=scenario.plant_code,
-                blob_container=scenario.blob_container,
                 test_id=armada.test_id,
             )
         )
@@ -637,7 +649,7 @@ def armada_with_robot_roster(armada_without_robots: Armada):
     """
     with ExitStack() as stack:
 
-        def _start(roster) -> Armada:
+        def _start(roster: List[RobotScenario]) -> Armada:
             return _start_robot_roster(armada_without_robots, roster, stack)
 
         yield _start

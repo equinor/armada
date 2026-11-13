@@ -1,16 +1,17 @@
 """Every combination of mission and return-home success and failure."""
 
-from typing import Dict, List
+from typing import Dict, Sequence
 
 from robotics_integration_tests.armada import Armada
-from robotics_integration_tests.custom_containers.isar import RobotScenario
 from robotics_integration_tests.scenarios.steps import (
     RobotContext,
+    RobotScenario,
     Step,
-    immediately,
-    mission_status,
-    robot_status,
+    do,
+    latest_mission_is,
+    robot_is,
     schedule_dummy_mission,
+    wait_for,
 )
 from robotics_integration_tests.settings.settings import settings
 from robotics_integration_tests.utilities.authentication_assertions import (
@@ -23,29 +24,6 @@ from robotics_integration_tests.utilities.teams_notifications import (
     wait_for_all_teams_notifications,
 )
 
-ROBOT_EXPECTATIONS: Dict[str, Dict] = {
-    "MissionOkThenHome": {
-        "mission_status": "Successful",
-        "robot_status": "Home",
-        "expect_blobs": True,
-    },
-    "MissionOkThenLost": {
-        "mission_status": "Successful",
-        "robot_status": "InterventionNeeded",
-        "expect_blobs": True,
-    },
-    "MissionFailThenHome": {
-        "mission_status": "Failed",
-        "robot_status": "Home",
-        "expect_blobs": False,
-    },
-    "MissionFailThenLost": {
-        "mission_status": "Failed",
-        "robot_status": "InterventionNeeded",
-        "expect_blobs": False,
-    },
-}
-
 
 def attempt_unauthorised_interference(context: RobotContext) -> None:
     assert_cannot_interfere_with_running_mission(
@@ -53,75 +31,56 @@ def attempt_unauthorised_interference(context: RobotContext) -> None:
     )
 
 
-def _outcome_steps(name: str) -> List[Step]:
-    expectations: Dict = ROBOT_EXPECTATIONS[name]
-    return [
-        Step(immediately, then=schedule_dummy_mission),
-        Step(mission_status(expectations["mission_status"])),
-        Step(robot_status(expectations["robot_status"])),
-    ]
+def _robot(
+    name: str,
+    mission_fails: bool = False,
+    return_home_fails: bool = False,
+    while_the_mission_is_in_flight: Sequence[Step] = (),
+) -> RobotScenario:
+    return RobotScenario(
+        name=name,
+        should_fail_normal_task=mission_fails,
+        should_fail_return_home=return_home_fails,
+        steps=[
+            do(schedule_dummy_mission),
+            *while_the_mission_is_in_flight,
+            wait_for(latest_mission_is("Failed" if mission_fails else "Successful")),
+            wait_for(robot_is("InterventionNeeded" if return_home_fails else "Home")),
+        ],
+    )
 
 
 ROSTER = [
-    RobotScenario(
-        name="MissionOkThenHome",
-        alias="isar_mission_ok_then_home",
-        steps=[
-            Step(immediately, then=schedule_dummy_mission),
-            # The mission is now in flight. Its outcome below proves the
-            # unauthorised calls had no effect.
-            Step(immediately, then=attempt_unauthorised_interference),
-            *_outcome_steps("MissionOkThenHome")[1:],
-        ],
+    _robot(
+        "MissionOkThenHome",
+        while_the_mission_is_in_flight=[do(attempt_unauthorised_interference)],
     ),
-    RobotScenario(
-        name="MissionOkThenLost",
-        alias="isar_mission_ok_then_lost",
-        should_fail_return_home=True,
-        steps=_outcome_steps("MissionOkThenLost"),
-    ),
-    RobotScenario(
-        name="MissionFailThenHome",
-        alias="isar_mission_fail_then_home",
-        should_fail_normal_task=True,
-        steps=_outcome_steps("MissionFailThenHome"),
-    ),
-    RobotScenario(
-        name="MissionFailThenLost",
-        alias="isar_mission_fail_then_lost",
-        should_fail_normal_task=True,
-        should_fail_return_home=True,
-        steps=_outcome_steps("MissionFailThenLost"),
-    ),
+    _robot("MissionOkThenLost", return_home_fails=True),
+    _robot("MissionFailThenHome", mission_fails=True),
+    _robot("MissionFailThenLost", mission_fails=True, return_home_fails=True),
 ]
 
 
 def assert_blobs_and_notifications(
     armada: Armada, contexts: Dict[str, RobotContext]
 ) -> None:
-    mission_runs: Dict[str, Dict] = {
-        name: contexts[name].mission_runs[0] for name in ROBOT_EXPECTATIONS
-    }
-
     raw_storage_conn: str = armada.armada_storage.azurite_containers.get(
         settings.SARA_RAW_STORAGE_CONTAINER
     ).host_connection_string
 
-    # All robots share the same installation and blob container. The blob
-    # folder path contains the mission run ID, so blob counts can be checked per
-    # robot: successful missions should have blobs and failed ones should not.
-    blob_container_name: str = armada.robots[
-        "MissionOkThenHome"
-    ].installation_code.lower()
+    def expected_blob_count(robot: RobotScenario) -> int:
+        if robot.should_fail_normal_task:
+            return 0
+        return len(contexts[robot.name].mission_runs[0].get("tasks", []))
 
+    # The blob folder path contains the mission run ID, so blobs can be counted
+    # per robot although every robot uploads to the same container.
     wait_for_all_mission_blobs(
-        container_name=blob_container_name,
+        container_name=ROSTER[0].plant.blob_container,
         connection_string=raw_storage_conn,
         mission_blob_expectations={
-            mission_runs[name]["id"]: (
-                len(mission_runs[name].get("tasks", [])) if exp["expect_blobs"] else 0
-            )
-            for name, exp in ROBOT_EXPECTATIONS.items()
+            contexts[robot.name].mission_runs[0]["id"]: expected_blob_count(robot)
+            for robot in ROSTER
         },
     )
 
@@ -131,7 +90,6 @@ def assert_blobs_and_notifications(
     wait_for_all_teams_notifications(
         receiver=receiver,
         notification_expectations={
-            name: exp["robot_status"] == "InterventionNeeded"
-            for name, exp in ROBOT_EXPECTATIONS.items()
+            robot.name: robot.should_fail_return_home for robot in ROSTER
         },
     )
