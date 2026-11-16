@@ -47,11 +47,11 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v6
 
       # Checks out the scripts that belong to this reusable workflow, at the same commit as the workflow
       - name: Checkout workflow scripts
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v6
         with:
           repository: ${{ job.workflow_repository || 'equinor/armada' }}
           ref: ${{ job.workflow_sha || 'main' }}
@@ -78,7 +78,7 @@ jobs:
             --migrations-dir "${MIGRATIONS_DIR}"
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 #v5
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 #v5
         with:
           dotnet-version: ${{ inputs.dotnet_version }}
 
