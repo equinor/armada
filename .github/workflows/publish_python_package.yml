@@ -1,0 +1,36 @@
+# Builds the calling repository's Python package with uv and publishes it to PyPI.
+# Intended to be called from a workflow triggered by `release: types: [created]`.
+
+name: Publish python package
+
+on:
+  workflow_call:
+    secrets:
+      PYPI_TOKEN:
+        required: true
+        description: "PyPI API token with permission to upload the package"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b #v8.1.0
+        with:
+          enable-cache: false
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish package
+        # --check-url skips files that already exist on PyPI, similar to twine's --skip-existing
+        run: uv publish --check-url https://pypi.org/simple/
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
