@@ -37,10 +37,6 @@ class Plant:
     installation_code: str
     name: str
 
-    @property
-    def blob_container(self) -> str:
-        return self.installation_code.lower()
-
 
 HULDRA = Plant(installation_code="HUA", name="Huldra")
 KAARSTO = Plant(installation_code="KAA", name="Kårstø")
@@ -115,7 +111,7 @@ def create_isar_robot_container(
             "ISAR_BLOB_STORAGE_CONNECTION_STRING_METADATA",
             blob_storage_connection_string_metadata,
         )
-        .with_env("ISAR_BLOB_CONTAINER", config.plant.blob_container)
+        .with_env("ISAR_BLOB_CONTAINER", config.plant.installation_code.lower())
         .with_env("ISAR_PLANT_CODE", config.plant.name)
         .with_env("ISAR_PLANT_SHORT_NAME", config.plant.installation_code)
         .with_env("ISAR_API_HOST_VIEWED_EXTERNALLY", config.alias)

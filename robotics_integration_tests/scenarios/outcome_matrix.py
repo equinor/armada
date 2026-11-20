@@ -76,7 +76,7 @@ def assert_blobs_and_notifications(
     # The blob folder path contains the mission run ID, so blobs can be counted
     # per robot although every robot uploads to the same container.
     wait_for_all_mission_blobs(
-        container_name=ROSTER[0].plant.blob_container,
+        container_name=ROSTER[0].plant.installation_code.lower(),
         connection_string=raw_storage_conn,
         mission_blob_expectations={
             contexts[robot.name].mission_runs[0]["id"]: expected_blob_count(robot)
