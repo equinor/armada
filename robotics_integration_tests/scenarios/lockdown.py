@@ -3,7 +3,10 @@
 from typing import Dict
 
 from robotics_integration_tests.armada import Armada
-from robotics_integration_tests.custom_containers.isar import KAARSTO, IsarRobot
+from robotics_integration_tests.custom_containers.isar import KAARSTO
+from robotics_integration_tests.scenarios.failure_notes import (
+    naming_the_robot_of_each_mission_run,
+)
 from robotics_integration_tests.scenarios.steps import RobotScenario
 from robotics_integration_tests.utilities.flotilla_backend_api import (
     clear_emergency_state,
@@ -59,42 +62,62 @@ ROSTER = [
 ]
 
 
-def _schedule_dummy_mission(backend_url: str, robot: IsarRobot) -> Dict:
-    return schedule_dummy_mission(
-        backend_url=backend_url,
-        robot_id=robot.robot_id,
-        installation_code=robot.installation_code,
-    )
-
-
 def _assert_robots_are_on_two_plants(armada: Armada) -> None:
     locked_down: str = LOCKED_DOWN_PLANT.installation_code
     for name in (LOCKDOWN_WHILE_IDLE, LOCKDOWN_DURING_MISSION):
-        assert armada.robots[name].installation_code == locked_down
+        plant: str = armada.robots[name].installation_code
+        assert (
+            plant == locked_down
+        ), f"{name} must be on the plant that is locked down, {locked_down}, but is on {plant}"
     for name in (OTHER_PLANT_WHILE_IDLE, OTHER_PLANT_DURING_MISSION):
-        assert armada.robots[name].installation_code != locked_down
+        assert (
+            armada.robots[name].installation_code != locked_down
+        ), f"{name} must be on another plant than the one that is locked down, {locked_down}"
 
 
 def _assert_only_the_locked_down_plant_is_in_lockdown(backend_url: str) -> None:
     statuses: Dict[str, str] = get_robot_statuses(backend_url)
-    assert statuses[LOCKDOWN_WHILE_IDLE] == "Lockdown", statuses
-    assert statuses[LOCKDOWN_DURING_MISSION] == "Lockdown", statuses
-    assert statuses[OTHER_PLANT_WHILE_IDLE] != "Lockdown", statuses
-    assert statuses[OTHER_PLANT_DURING_MISSION] != "Lockdown", statuses
+    for name in (LOCKDOWN_WHILE_IDLE, LOCKDOWN_DURING_MISSION):
+        assert statuses[name] == "Lockdown", (
+            f"{name} is on the locked-down plant but is '{statuses[name]}' rather "
+            f"than in Lockdown. All statuses: {statuses}"
+        )
+    for name in (OTHER_PLANT_WHILE_IDLE, OTHER_PLANT_DURING_MISSION):
+        assert statuses[name] != "Lockdown", (
+            f"{name} is on the other plant but is in Lockdown. "
+            f"All statuses: {statuses}"
+        )
 
 
 def lock_down_one_plant_and_verify_the_other_carries_on(armada: Armada) -> None:
+    robot_name_by_mission_run_id: Dict[str, str] = {}
+    with naming_the_robot_of_each_mission_run(robot_name_by_mission_run_id):
+        _lock_down_one_plant_and_verify_the_other_carries_on(
+            armada, robot_name_by_mission_run_id
+        )
+
+
+def _lock_down_one_plant_and_verify_the_other_carries_on(
+    armada: Armada, robot_name_by_mission_run_id: Dict[str, str]
+) -> None:
     backend_url: str = armada.flotilla_backend.backend_url
     _assert_robots_are_on_two_plants(armada)
 
-    positioning_mission: Dict = _schedule_dummy_mission(
-        backend_url, armada.robots[LOCKDOWN_WHILE_IDLE]
+    def schedule_dummy_mission_for(robot_name: str) -> Dict:
+        mission_run: Dict = schedule_dummy_mission(
+            backend_url=backend_url,
+            robot_id=armada.robots[robot_name].robot_id,
+            installation_code=armada.robots[robot_name].installation_code,
+        )
+        robot_name_by_mission_run_id[mission_run["id"]] = robot_name
+        return mission_run
+
+    positioning_mission: Dict = schedule_dummy_mission_for(LOCKDOWN_WHILE_IDLE)
+    mission_interrupted_by_lockdown: Dict = schedule_dummy_mission_for(
+        LOCKDOWN_DURING_MISSION
     )
-    mission_interrupted_by_lockdown: Dict = _schedule_dummy_mission(
-        backend_url, armada.robots[LOCKDOWN_DURING_MISSION]
-    )
-    mission_running_on_other_plant: Dict = _schedule_dummy_mission(
-        backend_url, armada.robots[OTHER_PLANT_DURING_MISSION]
+    mission_running_on_other_plant: Dict = schedule_dummy_mission_for(
+        OTHER_PLANT_DURING_MISSION
     )
 
     wait_until_idle_away_from_home(
@@ -127,8 +150,8 @@ def lock_down_one_plant_and_verify_the_other_carries_on(armada: Armada) -> None:
 
     # A robot caught by the lockdown holds its mission until release, so these
     # can only succeed if the other plant is unaffected.
-    mission_started_on_other_plant_during_lockdown: Dict = _schedule_dummy_mission(
-        backend_url, armada.robots[OTHER_PLANT_WHILE_IDLE]
+    mission_started_on_other_plant_during_lockdown: Dict = schedule_dummy_mission_for(
+        OTHER_PLANT_WHILE_IDLE
     )
     wait_for_all_mission_run_statuses(
         backend_url=backend_url,

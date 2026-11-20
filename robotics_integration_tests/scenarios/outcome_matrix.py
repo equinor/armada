@@ -3,6 +3,9 @@
 from typing import Dict, Sequence
 
 from robotics_integration_tests.armada import Armada
+from robotics_integration_tests.scenarios.failure_notes import (
+    naming_the_robot_of_each_mission_run,
+)
 from robotics_integration_tests.scenarios.steps import (
     RobotContext,
     RobotScenario,
@@ -75,14 +78,17 @@ def assert_blobs_and_notifications(
 
     # The blob folder path contains the mission run ID, so blobs can be counted
     # per robot although every robot uploads to the same container.
-    wait_for_all_mission_blobs(
-        container_name=ROSTER[0].plant.installation_code.lower(),
-        connection_string=raw_storage_conn,
-        mission_blob_expectations={
-            contexts[robot.name].mission_runs[0]["id"]: expected_blob_count(robot)
-            for robot in ROSTER
-        },
-    )
+    with naming_the_robot_of_each_mission_run(
+        {contexts[robot.name].mission_runs[0]["id"]: robot.name for robot in ROSTER}
+    ):
+        wait_for_all_mission_blobs(
+            container_name=ROSTER[0].plant.installation_code.lower(),
+            connection_string=raw_storage_conn,
+            mission_blob_expectations={
+                contexts[robot.name].mission_runs[0]["id"]: expected_blob_count(robot)
+                for robot in ROSTER
+            },
+        )
 
     receiver = armada.teams_webhook_receiver
     assert receiver is not None, "Teams webhook receiver was not started"
