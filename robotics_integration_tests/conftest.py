@@ -89,11 +89,6 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
 from robotics_integration_tests.utilities.sara_backend_api import (
     wait_for_sara_to_be_responsive,
 )
-from robotics_integration_tests.utilities.mqtt_recorder import MqttRecorder
-
-# The broker user ISAR publishes as; granted `readwrite isar/#` by the broker's
-# access_control file, which is also what the recorder needs in order to subscribe.
-ISAR_MQTT_USERNAME = "isar"
 
 
 def _pull_latest_images() -> None:
@@ -330,35 +325,6 @@ def teams_webhook_receiver(network: Network, test_id: str):
 
 
 @pytest.fixture
-def mqtt_recorder(flotilla_broker: FlotillaBroker, mqtt_credentials: MqttCredentials):
-    """Records every ISAR status and mission message published during a test.
-
-    Ordered before the robot fixtures so that no transition is missed: ISAR
-    republishes its status on every state machine iteration, and a recorder that
-    attached late would silently lose the early states.
-    """
-    recorder = MqttRecorder(
-        host="localhost",
-        port=int(flotilla_broker.broker.get_exposed_port(flotilla_broker.port)),
-        username=ISAR_MQTT_USERNAME,
-        password=mqtt_credentials.passwords[ISAR_MQTT_USERNAME],
-    )
-    recorder.start(ca_certificate=mqtt_credentials.ca_certificate)
-    try:
-        yield recorder
-    finally:
-        # Dump every trace on the way out. When an assertion about a transition
-        # fails, the recorded traces are the only record of what the robots
-        # actually did, and the ISAR container logs are gone by teardown.
-        for robot_name in recorder.recorded_robot_names():
-            logger.info(
-                f"MQTT state trace for '{robot_name}': "
-                f"{recorder.state_trace(robot_name)}"
-            )
-        recorder.stop()
-
-
-@pytest.fixture
 def flotilla_backend(
     network: Network,
     keycloak: Keycloak,
@@ -451,7 +417,6 @@ def armada_without_robots(
     armada_storage: ArmadaStorage,
     teams_webhook_receiver: TeamsWebhookReceiver,
     mqtt_credentials: MqttCredentials,
-    mqtt_recorder: MqttRecorder,
 ):
     armada: Armada = Armada()
 
@@ -466,7 +431,6 @@ def armada_without_robots(
     armada.flotilla_backend = flotilla_backend
     armada.teams_webhook_receiver = teams_webhook_receiver
     armada.mqtt_credentials = mqtt_credentials
-    armada.mqtt_recorder = mqtt_recorder
 
     yield armada
 
