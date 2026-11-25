@@ -113,6 +113,13 @@ jobs:
         working-directory: integration-tests
         run: uv sync --frozen
 
+      # Kept out of the integration run on purpose. pytest-xdist queues two tests
+      # per worker, so sharing a session with these fast tests leaves half of the
+      # workers without an integration test until the first ones have finished.
+      - name: Run fixture regression tests with pytest
+        working-directory: integration-tests
+        run: uv run --frozen pytest robotics_integration_tests/unit
+
       - name: Run integration tests with pytest
         working-directory: integration-tests
         env:
@@ -125,4 +132,4 @@ jobs:
           GIT_REPOSITORY_FOR_MIGRATIONS_REF: ${{ steps.images.outputs.git_ref }}
           SARA_GIT_REPOSITORY_FOR_MIGRATIONS_REF: ${{ steps.images.outputs.sara_git_ref }}
 
-        run: uv run --frozen pytest -s -n auto robotics_integration_tests
+        run: uv run --frozen pytest -s -n auto --ignore=robotics_integration_tests/unit robotics_integration_tests

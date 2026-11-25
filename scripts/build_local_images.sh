@@ -198,12 +198,12 @@ printf '  %s\n' "$FLOTILLA_IMAGE" "$BROKER_IMAGE" "$SARA_IMAGE" "$ISAR_ROBOT_IMA
 if [ "$RUN_TESTS" = true ]; then
     log "Running the integration tests against the local images"
     cd "$ARMADA_DIR"
-    env "${PYTEST_ENV[@]}" uv run --frozen pytest -n auto robotics_integration_tests
+    env "${PYTEST_ENV[@]}" uv run --frozen pytest -n auto --ignore=robotics_integration_tests/unit robotics_integration_tests
 else
     log "Run the integration tests with:"
     echo
     printf '  cd %s\n' "$ARMADA_DIR"
     for pair in "${PYTEST_ENV[@]}"; do printf '  %s \\\n' "$pair"; done
-    printf '  uv run --frozen pytest -n auto robotics_integration_tests\n\n'
+    printf '  uv run --frozen pytest -n auto --ignore=robotics_integration_tests/unit robotics_integration_tests\n\n'
     printf 'Or re-run this script with --run.\n\n'
 fi
