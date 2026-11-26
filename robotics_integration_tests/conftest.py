@@ -5,6 +5,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from typing import Dict, NamedTuple
 
@@ -80,8 +81,8 @@ from robotics_integration_tests.utilities.authentication_assertions import (
     isar_url,
 )
 from robotics_integration_tests.utilities.database_template import (
+    DatabaseTemplateSpec,
     build_database_template,
-    run_once_per_session,
 )
 from robotics_integration_tests.utilities.flotilla_backend_api import (
     setup_robot_in_flotilla,
@@ -89,6 +90,7 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
     populate_database_with_minimum_models,
     wait_for_database_to_be_populated,
 )
+from robotics_integration_tests.utilities.run_once import run_once_per_session
 from robotics_integration_tests.utilities.sara_backend_api import (
     wait_for_sara_to_be_responsive,
 )
@@ -204,6 +206,20 @@ SARA_DATABASE_CONNECTION_STRING: str = (
 )
 
 
+FLOTILLA_DATABASE_TEMPLATE = DatabaseTemplateSpec(
+    file_name="flotilla-database-template.sql",
+    create_database=create_postgres_container,
+    create_migrations_runner=create_migrations_runner_container,
+    connection_string=FLOTILLA_DATABASE_CONNECTION_STRING,
+)
+SARA_DATABASE_TEMPLATE = DatabaseTemplateSpec(
+    file_name="sara-database-template.sql",
+    create_database=create_sara_postgres_container,
+    create_migrations_runner=create_sara_migrations_runner_container,
+    connection_string=SARA_DATABASE_CONNECTION_STRING,
+)
+
+
 class DatabaseTemplates(NamedTuple):
     """Dumps of fully migrated databases, loaded by each test's own database."""
 
@@ -215,34 +231,18 @@ class DatabaseTemplates(NamedTuple):
 def database_templates(shared_session_dir: Path) -> DatabaseTemplates:
     """Run the flotilla and sara migrations once per run, side by side."""
 
-    def build(name: str, create_database, create_migrations_runner, connection_string):
+    def build(spec: DatabaseTemplateSpec) -> Path:
         return run_once_per_session(
             shared_session_dir,
-            name,
-            lambda output: build_database_template(
-                output=output,
-                create_database=create_database,
-                create_migrations_runner=create_migrations_runner,
-                connection_string=connection_string,
-            ),
+            spec.file_name,
+            partial(build_database_template, spec=spec),
         )
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        flotilla = executor.submit(
-            build,
-            "flotilla-database-template.sql",
-            create_postgres_container,
-            create_migrations_runner_container,
-            FLOTILLA_DATABASE_CONNECTION_STRING,
+        flotilla, sara = executor.map(
+            build, (FLOTILLA_DATABASE_TEMPLATE, SARA_DATABASE_TEMPLATE)
         )
-        sara = executor.submit(
-            build,
-            "sara-database-template.sql",
-            create_sara_postgres_container,
-            create_sara_migrations_runner_container,
-            SARA_DATABASE_CONNECTION_STRING,
-        )
-        return DatabaseTemplates(flotilla=flotilla.result(), sara=sara.result())
+    return DatabaseTemplates(flotilla=flotilla, sara=sara)
 
 
 @pytest.fixture
