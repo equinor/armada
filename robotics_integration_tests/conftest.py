@@ -86,10 +86,6 @@ from robotics_integration_tests.utilities.database_template import (
     DatabaseTemplateSpec,
     build_database_template,
 )
-from robotics_integration_tests.utilities.fleet import (
-    RobotScenario,
-    require_status_that_lasts_for_several_polls,
-)
 from robotics_integration_tests.utilities.flotilla_backend_api import (
     setup_robot_in_flotilla,
     wait_for_backend_to_be_responsive,
@@ -580,7 +576,7 @@ def armada_with_single_failing_robot(armada_without_robots: Armada):
         yield armada
 
 
-def _assert_no_robot_name_contains_another(roster: List[RobotScenario]) -> None:
+def _assert_no_robot_name_contains_another(roster: List[RobotConfig]) -> None:
     names = [scenario.name for scenario in roster]
     clashing = [(a, b) for a, b in permutations(names, 2) if a in b]
     assert not clashing, (
@@ -589,25 +585,11 @@ def _assert_no_robot_name_contains_another(roster: List[RobotScenario]) -> None:
     )
 
 
-def _assert_every_robot_ends_in_a_status_that_can_be_waited_for(
-    roster: List[RobotScenario],
-) -> None:
-    for scenario in roster:
-        try:
-            require_status_that_lasts_for_several_polls(scenario.expected_robot_status)
-        except ValueError as error:
-            raise AssertionError(
-                f"{scenario.name} cannot be expected to end up in "
-                f"'{scenario.expected_robot_status}': {error}"
-            ) from error
-
-
 def _start_robot_roster(
-    armada: Armada, roster: List[RobotScenario], stack: ExitStack
+    armada: Armada, roster: List[RobotConfig], stack: ExitStack
 ) -> Armada:
     """Start one ISAR container per scenario and register each with Flotilla."""
     _assert_no_robot_name_contains_another(roster)
-    _assert_every_robot_ends_in_a_status_that_can_be_waited_for(roster)
     blob_conn_data, blob_conn_metadata = _blob_connection_strings(armada)
 
     for scenario in roster:
@@ -652,17 +634,17 @@ def _start_robot_roster(
 def armada_with_robot_roster(armada_without_robots: Armada):
     """Factory yielding an armada with an arbitrary roster of ISAR robots.
 
-    Tests call it with a list of ``RobotScenario``, which each test file
-    defines for itself.
+    Tests call it with a list of ``RobotConfig``, which each test file
+    defines for itself with ``robot_for_multi_robot_test``.
 
-    All robots default to ``should_start_at_home=True`` so they boot straight into
+    That sets ``should_start_at_home=True`` so the robots boot straight into
     ISAR's ``Home`` state. Without it the bootstrap return-home cycle races the
     test, and for robots configured to fail return-home it lands them in
     ``InterventionNeeded`` before a mission can be dispatched.
     """
     with ExitStack() as stack:
 
-        def _start(roster: List[RobotScenario]) -> Armada:
+        def _start(roster: List[RobotConfig]) -> Armada:
             return _start_robot_roster(armada_without_robots, roster, stack)
 
         yield _start

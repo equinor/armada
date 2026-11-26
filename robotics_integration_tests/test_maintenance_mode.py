@@ -1,12 +1,21 @@
+from typing import Dict
+
 from robotics_integration_tests.armada import Armada
-from robotics_integration_tests.utilities.fleet import (
-    TASK_DURATION_THAT_LEAVES_TIME_TO_INTERFERE_SECONDS,
-    Fleet,
-    RobotScenario,
-    latest_mission_is,
-    mission_is_under_way_with_tasks_left,
-    robot_is,
+from robotics_integration_tests.custom_containers.isar import (
+    IsarRobot,
+    robot_for_multi_robot_test,
 )
+from robotics_integration_tests.utilities.flotilla_backend_api import (
+    release_maintenance_mode,
+    schedule_dummy_mission,
+    set_maintenance_mode,
+    wait_for_all_robot_statuses,
+    wait_for_mission_run_status,
+    wait_for_second_task_status_of_mission_run,
+)
+
+TASK_DURATION_THAT_LEAVES_TIME_TO_INTERFERE_SECONDS = 15.0
+TIMEOUT_SECONDS = 240
 
 MAINTENANCE_WHILE_IDLE = "MaintenanceWhileIdle"
 MAINTENANCE_DURING_MISSION = "MaintenanceDuringMission"
@@ -17,11 +26,10 @@ MAINTENANCE_DURING_MISSION = "MaintenanceDuringMission"
 STATUS_OF_A_MISSION_INTERRUPTED_BY_MAINTENANCE = "Aborted"
 
 ROSTER = [
-    RobotScenario(name=MAINTENANCE_WHILE_IDLE, expected_mission_status=None),
-    RobotScenario(
+    robot_for_multi_robot_test(name=MAINTENANCE_WHILE_IDLE),
+    robot_for_multi_robot_test(
         name=MAINTENANCE_DURING_MISSION,
         task_duration_in_seconds=TASK_DURATION_THAT_LEAVES_TIME_TO_INTERFERE_SECONDS,
-        expected_mission_status=STATUS_OF_A_MISSION_INTERRUPTED_BY_MAINTENANCE,
     ),
 ]
 
@@ -31,25 +39,48 @@ def test_maintenance_mode_while_idle_and_during_mission(
 ) -> None:
     """The comment on an action is the ISAR states it drives the robot through."""
     armada: Armada = armada_with_robot_roster(ROSTER)
-    fleet = Fleet(armada, ROSTER)
+    backend_url: str = armada.flotilla_backend.backend_url
+    idle: IsarRobot = armada.robots[MAINTENANCE_WHILE_IDLE]
+    on_mission: IsarRobot = armada.robots[MAINTENANCE_DURING_MISSION]
 
-    fleet.schedule_dummy_mission(MAINTENANCE_DURING_MISSION)
+    mission_run: Dict = schedule_dummy_mission(
+        backend_url, on_mission.robot_id, on_mission.installation_code
+    )
     # Home -> Maintenance
-    fleet.set_maintenance_mode(MAINTENANCE_WHILE_IDLE)
+    set_maintenance_mode(backend_url, idle.robot_id)
 
-    fleet.wait_until(mission_is_under_way_with_tasks_left(MAINTENANCE_DURING_MISSION))
+    wait_for_second_task_status_of_mission_run(
+        backend_url, mission_run["id"], "InProgress", timeout=TIMEOUT_SECONDS
+    )
     # Monitor -> StoppingDueToMaintenance -> Maintenance
-    fleet.set_maintenance_mode(MAINTENANCE_DURING_MISSION)
+    set_maintenance_mode(backend_url, on_mission.robot_id)
 
-    fleet.wait_until(
-        robot_is(MAINTENANCE_WHILE_IDLE, "Maintenance"),
-        robot_is(MAINTENANCE_DURING_MISSION, "Maintenance"),
-        latest_mission_is(
-            MAINTENANCE_DURING_MISSION, STATUS_OF_A_MISSION_INTERRUPTED_BY_MAINTENANCE
-        ),
+    wait_for_all_robot_statuses(
+        backend_url,
+        {
+            MAINTENANCE_WHILE_IDLE: "Maintenance",
+            MAINTENANCE_DURING_MISSION: "Maintenance",
+        },
+        timeout=TIMEOUT_SECONDS,
+    )
+    wait_for_mission_run_status(
+        backend_url,
+        mission_run["id"],
+        STATUS_OF_A_MISSION_INTERRUPTED_BY_MAINTENANCE,
+        timeout=TIMEOUT_SECONDS,
     )
     # Maintenance -> UnknownStatus -> Home
-    fleet.release_maintenance_mode(MAINTENANCE_WHILE_IDLE)
-    fleet.release_maintenance_mode(MAINTENANCE_DURING_MISSION)
+    release_maintenance_mode(backend_url, idle.robot_id)
+    release_maintenance_mode(backend_url, on_mission.robot_id)
 
-    fleet.wait_until(*fleet.expected_outcomes())
+    wait_for_all_robot_statuses(
+        backend_url,
+        {MAINTENANCE_WHILE_IDLE: "Home", MAINTENANCE_DURING_MISSION: "Home"},
+        timeout=TIMEOUT_SECONDS,
+    )
+    wait_for_mission_run_status(
+        backend_url,
+        mission_run["id"],
+        STATUS_OF_A_MISSION_INTERRUPTED_BY_MAINTENANCE,
+        timeout=TIMEOUT_SECONDS,
+    )

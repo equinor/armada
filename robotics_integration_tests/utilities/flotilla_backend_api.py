@@ -204,13 +204,6 @@ def get_robot_by_name(backend_url: str, name: str) -> Dict:
     raise RuntimeError(f"Robot with name '{name}' not found")
 
 
-def get_robot_statuses(backend_url: str) -> Dict[str, str]:
-    """The current status of every robot, by robot name, from a single request."""
-    response: Response = requests.get(f"{backend_url}/robots", headers=_add_headers())
-    response.raise_for_status()
-    return {robot.get("name"): robot.get("status") for robot in response.json()}
-
-
 def is_robot_status(backend_url: str, robot_name: str, expected_status: str) -> bool:
     robot: Dict = get_robot_by_name(backend_url=backend_url, name=robot_name)
     current_status: str = robot.get("status")

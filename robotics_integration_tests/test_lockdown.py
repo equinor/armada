@@ -1,12 +1,25 @@
+from typing import Dict
+
 from robotics_integration_tests.armada import Armada
-from robotics_integration_tests.custom_containers.isar import HULDRA, KAARSTO
-from robotics_integration_tests.utilities.fleet import (
-    Fleet,
-    RobotScenario,
-    latest_mission_is,
-    mission_is_under_way_with_tasks_left,
-    robot_is,
+from robotics_integration_tests.custom_containers.isar import (
+    HULDRA,
+    KAARSTO,
+    IsarRobot,
+    robot_for_multi_robot_test,
 )
+from robotics_integration_tests.utilities.flotilla_backend_api import (
+    clear_emergency_state,
+    is_robot_status,
+    schedule_dummy_mission,
+    send_all_robots_to_lockdown,
+    wait_for_all_mission_run_statuses,
+    wait_for_all_robot_statuses,
+    wait_for_mission_run_status,
+    wait_for_robot_status,
+    wait_for_second_task_status_of_mission_run,
+)
+
+TIMEOUT_SECONDS = 240
 
 # Lockdown is triggered once the idle robot is away from home and the other
 # has tasks left. These durations make the two overlap for about 25 seconds.
@@ -27,13 +40,13 @@ BYSTANDER_ON_ANOTHER_PLANT = "BystanderOnAnotherPlant"
 LOCKED_DOWN_ROBOTS = [
     # A robot that is already home enters Lockdown directly, so this one is
     # sent away first.
-    RobotScenario(
+    robot_for_multi_robot_test(
         name=LOCKDOWN_WHILE_IDLE,
         task_duration_in_seconds=SHORT_TASK_DURATION_SECONDS,
         return_home_delay_in_seconds=RETURN_HOME_DELAY_THAT_LETS_THE_TEST_GO_FIRST_SECONDS,
         plant=LOCKED_DOWN_PLANT,
     ),
-    RobotScenario(
+    robot_for_multi_robot_test(
         name=LOCKDOWN_DURING_MISSION,
         task_duration_in_seconds=TASK_DURATION_THAT_OUTLASTS_THE_SHORT_MISSION_SECONDS,
         plant=LOCKED_DOWN_PLANT,
@@ -41,7 +54,9 @@ LOCKED_DOWN_ROBOTS = [
 ]
 
 # Given its mission during the lockdown, which it must complete.
-BYSTANDER = RobotScenario(name=BYSTANDER_ON_ANOTHER_PLANT, plant=OTHER_PLANT)
+BYSTANDER = robot_for_multi_robot_test(
+    name=BYSTANDER_ON_ANOTHER_PLANT, plant=OTHER_PLANT
+)
 
 ROSTER = [*LOCKED_DOWN_ROBOTS, BYSTANDER]
 
@@ -56,39 +71,68 @@ def test_lockdown_of_one_plant_leaves_another_plant_alone(
     """
     armada: Armada = armada_with_robot_roster(ROSTER)
     _assert_only_the_lockdown_robots_are_on_the_locked_down_plant(armada)
-    fleet = Fleet(armada, ROSTER)
+    backend_url: str = armada.flotilla_backend.backend_url
+    idle: IsarRobot = armada.robots[LOCKDOWN_WHILE_IDLE]
+    on_mission: IsarRobot = armada.robots[LOCKDOWN_DURING_MISSION]
+    bystander: IsarRobot = armada.robots[BYSTANDER_ON_ANOTHER_PLANT]
 
-    fleet.schedule_dummy_mission(LOCKDOWN_WHILE_IDLE, LOCKDOWN_DURING_MISSION)
+    idle_run: Dict = schedule_dummy_mission(
+        backend_url, idle.robot_id, idle.installation_code
+    )
+    interrupted_run: Dict = schedule_dummy_mission(
+        backend_url, on_mission.robot_id, on_mission.installation_code
+    )
 
-    fleet.wait_until(
-        latest_mission_is(LOCKDOWN_WHILE_IDLE, "Successful"),
-        robot_is(LOCKDOWN_WHILE_IDLE, "Available"),
-        mission_is_under_way_with_tasks_left(LOCKDOWN_DURING_MISSION),
+    wait_for_mission_run_status(
+        backend_url, idle_run["id"], "Successful", timeout=TIMEOUT_SECONDS
+    )
+    wait_for_robot_status(
+        backend_url, LOCKDOWN_WHILE_IDLE, "Available", timeout=TIMEOUT_SECONDS
+    )
+    wait_for_second_task_status_of_mission_run(
+        backend_url, interrupted_run["id"], "InProgress", timeout=TIMEOUT_SECONDS
     )
     # AwaitNextMission -> GoingToLockdown -> Lockdown
     # Monitor -> StoppingGoToLockdown -> GoingToLockdownWithMission ->
     # LockdownWithMission
-    fleet.send_all_robots_to_lockdown(LOCKED_DOWN_PLANT)
+    send_all_robots_to_lockdown(backend_url, LOCKED_DOWN_PLANT.installation_code)
     # A robot caught by a lockdown holds its mission until release, so this
     # mission can only succeed if the bystander's plant is unaffected.
-    fleet.schedule_dummy_mission(BYSTANDER_ON_ANOTHER_PLANT)
-
-    fleet.wait_until(
-        *fleet.expected_outcomes([BYSTANDER]),
-        robot_is(LOCKDOWN_WHILE_IDLE, "Lockdown"),
-        robot_is(LOCKDOWN_DURING_MISSION, "Lockdown"),
-    )
-    assert "Lockdown" not in fleet.statuses_seen[BYSTANDER_ON_ANOTHER_PLANT], (
-        f"{BYSTANDER_ON_ANOTHER_PLANT} is on another plant than the one that "
-        f"was locked down, but was seen in "
-        f"{fleet.statuses_seen[BYSTANDER_ON_ANOTHER_PLANT]}"
+    bystander_run: Dict = schedule_dummy_mission(
+        backend_url, bystander.robot_id, bystander.installation_code
     )
 
-    fleet.clear_emergency_state(LOCKED_DOWN_PLANT)
+    wait_for_all_robot_statuses(
+        backend_url,
+        {LOCKDOWN_WHILE_IDLE: "Lockdown", LOCKDOWN_DURING_MISSION: "Lockdown"},
+        timeout=TIMEOUT_SECONDS,
+    )
+    wait_for_mission_run_status(
+        backend_url, bystander_run["id"], "Successful", timeout=TIMEOUT_SECONDS
+    )
+    wait_for_robot_status(
+        backend_url, BYSTANDER_ON_ANOTHER_PLANT, "Home", timeout=TIMEOUT_SECONDS
+    )
+    for robot in LOCKED_DOWN_ROBOTS:
+        assert is_robot_status(backend_url, robot.name, "Lockdown"), (
+            f"{robot.name} must still be in Lockdown when "
+            f"{BYSTANDER_ON_ANOTHER_PLANT} has completed its mission"
+        )
+
+    clear_emergency_state(backend_url, LOCKED_DOWN_PLANT.installation_code)
 
     # Flotilla shows Lockdown and LockdownWithMission alike. Only the latter
     # has a mission to resume on release.
-    fleet.wait_until(*fleet.expected_outcomes(LOCKED_DOWN_ROBOTS))
+    wait_for_all_mission_run_statuses(
+        backend_url,
+        {idle_run["id"]: "Successful", interrupted_run["id"]: "Successful"},
+        timeout=TIMEOUT_SECONDS,
+    )
+    wait_for_all_robot_statuses(
+        backend_url,
+        {LOCKDOWN_WHILE_IDLE: "Home", LOCKDOWN_DURING_MISSION: "Home"},
+        timeout=TIMEOUT_SECONDS,
+    )
 
 
 def _assert_only_the_lockdown_robots_are_on_the_locked_down_plant(

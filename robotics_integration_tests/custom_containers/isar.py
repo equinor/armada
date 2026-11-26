@@ -70,6 +70,21 @@ class RobotConfig:
             self.alias = f"isar_{snake_case_name}"
 
 
+def robot_for_multi_robot_test(name: str, **overrides) -> RobotConfig:
+    """A robot with the defaults that suit a test with several robots."""
+    defaults = dict(
+        # Boots straight into Home, so the bootstrap return home cannot race
+        # the test.
+        should_start_at_home=True,
+        return_home_retry_limit=1,
+        # Robots discharge while away from home, and a long test can drift past
+        # ISAR's default 25 % and divert into recharging. Robots that are about
+        # battery set their own threshold.
+        mission_battery_start_threshold=0.0,
+    )
+    return RobotConfig(name=name, **{**defaults, **overrides})
+
+
 def create_isar_robot_container(
     network: Network,
     openid_config_url: str,
