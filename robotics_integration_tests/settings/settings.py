@@ -95,8 +95,6 @@ class Settings(BaseSettings):
     )
 
     # ISAR Robot environment
-    ISAR_ROBOT_NAME: str = Field(default="Placebot")
-    ISAR_ROBOT_ALIAS: str = Field(default="isar_robot")
     ISAR_ROBOT_IMAGE: str = Field(
         default="ghcr.io/equinor/isar-robot:latest"
     )

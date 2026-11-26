@@ -3,7 +3,7 @@ from typing import Dict
 from robotics_integration_tests.armada import Armada
 from robotics_integration_tests.custom_containers.isar import (
     IsarRobot,
-    robot_for_multi_robot_test,
+    RobotConfig,
 )
 from robotics_integration_tests.utilities.flotilla_backend_api import (
     release_maintenance_mode,
@@ -26,8 +26,8 @@ MAINTENANCE_DURING_MISSION = "MaintenanceDuringMission"
 STATUS_OF_A_MISSION_INTERRUPTED_BY_MAINTENANCE = "Aborted"
 
 ROSTER = [
-    robot_for_multi_robot_test(name=MAINTENANCE_WHILE_IDLE),
-    robot_for_multi_robot_test(
+    RobotConfig(name=MAINTENANCE_WHILE_IDLE),
+    RobotConfig(
         name=MAINTENANCE_DURING_MISSION,
         task_duration_in_seconds=TASK_DURATION_THAT_LEAVES_TIME_TO_INTERFERE_SECONDS,
     ),

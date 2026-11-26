@@ -53,12 +53,18 @@ class RobotConfig:
     alias: str = ""
     should_fail_normal_task: bool = False
     should_fail_return_home: bool = False
-    should_start_at_home: bool = False
-    return_home_retry_limit: int = 5
+    # Boots straight into Home, so the bootstrap return home cannot race the
+    # test. A robot that fails return home would otherwise be in
+    # InterventionNeeded before a mission can be dispatched.
+    should_start_at_home: bool = True
+    return_home_retry_limit: int = 1
     task_duration_in_seconds: float = 5.0
     initial_battery_level: float = 75.0
     return_home_delay_in_seconds: int = 10
-    mission_battery_start_threshold: float = 25.0
+    # Robots discharge while away from home, and a long test can drift past
+    # ISAR's default 25 % and divert into recharging. Robots that are about
+    # battery set their own threshold.
+    mission_battery_start_threshold: float = 0.0
     battery_recharge_threshold: float = 80.0
     battery_publish_interval_in_seconds: float = 2.0
     battery_poll_interval_in_seconds: float = 5.0
@@ -68,21 +74,6 @@ class RobotConfig:
         if not self.alias:
             snake_case_name: str = re.sub(r"(?<!^)(?=[A-Z])", "_", self.name).lower()
             self.alias = f"isar_{snake_case_name}"
-
-
-def robot_for_multi_robot_test(name: str, **overrides) -> RobotConfig:
-    """A robot with the defaults that suit a test with several robots."""
-    defaults = dict(
-        # Boots straight into Home, so the bootstrap return home cannot race
-        # the test.
-        should_start_at_home=True,
-        return_home_retry_limit=1,
-        # Robots discharge while away from home, and a long test can drift past
-        # ISAR's default 25 % and divert into recharging. Robots that are about
-        # battery set their own threshold.
-        mission_battery_start_threshold=0.0,
-    )
-    return RobotConfig(name=name, **{**defaults, **overrides})
 
 
 def create_isar_robot_container(

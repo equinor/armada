@@ -4,7 +4,7 @@ from typing import Dict
 from robotics_integration_tests.armada import Armada
 from robotics_integration_tests.custom_containers.isar import (
     IsarRobot,
-    robot_for_multi_robot_test,
+    RobotConfig,
 )
 from robotics_integration_tests.utilities.flotilla_backend_api import (
     pause_mission,
@@ -23,7 +23,7 @@ MISSION_WHILE_RETURN_HOME_PAUSED = "MissionWhileReturnHomePaused"
 
 # Both robots are acted on in the same window, so they share these.
 _robot_with_time_to_interfere = partial(
-    robot_for_multi_robot_test,
+    RobotConfig,
     task_duration_in_seconds=TASK_DURATION_THAT_LEAVES_TIME_TO_INTERFERE_SECONDS,
     return_home_delay_in_seconds=PROMPT_RETURN_HOME_DELAY_SECONDS,
 )

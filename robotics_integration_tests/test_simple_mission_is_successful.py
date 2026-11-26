@@ -3,6 +3,7 @@ from typing import Dict
 from loguru import logger
 
 from robotics_integration_tests.armada import Armada
+from robotics_integration_tests.custom_containers.isar import RobotConfig
 from robotics_integration_tests.settings.settings import settings
 from robotics_integration_tests.utilities.blob_storage import (
     wait_until_all_expected_files_uploaded,
@@ -25,11 +26,13 @@ SARA_ANALYSIS_TRIGGER_FAILED_LOG = (
     "Error occurred while triggering analyses for InspectionId"
 )
 
+ROSTER = [RobotConfig(name="Placebot")]
+
 
 def test_simple_mission_with_three_tags_is_successful(
-    armada_with_single_successful_robot: Armada,
+    armada_with_robot_roster,
 ) -> None:
-    armada: Armada = armada_with_single_successful_robot
+    armada: Armada = armada_with_robot_roster(ROSTER)
     robot_name, robot = next(iter(armada.robots.items()))
     mission_payload: Dict = get_dummy_mission_payload_with_installation(robot.installation_code)
     mission: Dict = create_mission(backend_url=armada.flotilla_backend.backend_url, payload=mission_payload)

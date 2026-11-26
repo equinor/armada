@@ -3,6 +3,7 @@ from typing import Dict
 from loguru import logger
 
 from robotics_integration_tests.armada import Armada
+from robotics_integration_tests.custom_containers.isar import RobotConfig
 from robotics_integration_tests.settings.settings import settings
 from robotics_integration_tests.utilities.authentication_assertions import (
     assert_cannot_pause_mission,
@@ -22,11 +23,13 @@ from robotics_integration_tests.utilities.flotilla_backend_api import (
     wait_for_second_task_status_of_mission_run,
 )
 
+ROSTER = [RobotConfig(name="Placebot")]
+
 
 def test_simple_mission_pausing_and_resuming_successfully(
-    armada_with_single_successful_robot: Armada,
+    armada_with_robot_roster,
 ) -> None:
-    armada: Armada = armada_with_single_successful_robot
+    armada: Armada = armada_with_robot_roster(ROSTER)
     robot_name, robot = next(iter(armada.robots.items()))
     mission_payload: Dict = get_dummy_mission_payload_with_installation(robot.installation_code)
     mission: Dict = create_mission(backend_url=armada.flotilla_backend.backend_url, payload=mission_payload)

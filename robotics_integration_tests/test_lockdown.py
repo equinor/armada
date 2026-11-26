@@ -5,7 +5,7 @@ from robotics_integration_tests.custom_containers.isar import (
     HULDRA,
     KAARSTO,
     IsarRobot,
-    robot_for_multi_robot_test,
+    RobotConfig,
 )
 from robotics_integration_tests.utilities.flotilla_backend_api import (
     clear_emergency_state,
@@ -40,13 +40,13 @@ BYSTANDER_ON_ANOTHER_PLANT = "BystanderOnAnotherPlant"
 LOCKED_DOWN_ROBOTS = [
     # A robot that is already home enters Lockdown directly, so this one is
     # sent away first.
-    robot_for_multi_robot_test(
+    RobotConfig(
         name=LOCKDOWN_WHILE_IDLE,
         task_duration_in_seconds=SHORT_TASK_DURATION_SECONDS,
         return_home_delay_in_seconds=RETURN_HOME_DELAY_THAT_LETS_THE_TEST_GO_FIRST_SECONDS,
         plant=LOCKED_DOWN_PLANT,
     ),
-    robot_for_multi_robot_test(
+    RobotConfig(
         name=LOCKDOWN_DURING_MISSION,
         task_duration_in_seconds=TASK_DURATION_THAT_OUTLASTS_THE_SHORT_MISSION_SECONDS,
         plant=LOCKED_DOWN_PLANT,
@@ -54,9 +54,7 @@ LOCKED_DOWN_ROBOTS = [
 ]
 
 # Given its mission during the lockdown, which it must complete.
-BYSTANDER = robot_for_multi_robot_test(
-    name=BYSTANDER_ON_ANOTHER_PLANT, plant=OTHER_PLANT
-)
+BYSTANDER = RobotConfig(name=BYSTANDER_ON_ANOTHER_PLANT, plant=OTHER_PLANT)
 
 ROSTER = [*LOCKED_DOWN_ROBOTS, BYSTANDER]
 

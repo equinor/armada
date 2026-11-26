@@ -501,81 +501,6 @@ def _assert_robots_require_authentication(armada: Armada) -> None:
         )
 
 
-@pytest.fixture
-def armada_with_single_successful_robot(armada_without_robots: Armada):
-    armada: Armada = armada_without_robots
-    blob_conn_data, blob_conn_metadata = _blob_connection_strings(armada)
-    with create_isar_robot_container(
-        network=armada.network,
-        openid_config_url=armada.keycloak.internal_openid_config_url,
-        mqtt_credentials=armada.mqtt_credentials,
-        image=settings.ISAR_ROBOT_IMAGE,
-        config=RobotConfig(
-            name=settings.ISAR_ROBOT_NAME, alias=settings.ISAR_ROBOT_ALIAS
-        ),
-        port=settings.ISAR_ROBOT_PORT,
-        blob_storage_connection_string_data=blob_conn_data,
-        blob_storage_connection_string_metadata=blob_conn_metadata,
-        test_id=armada.test_id,
-    ) as isar_robot:
-
-        robot_id, installation_code_for_robot = setup_robot_in_flotilla(
-            backend_url=armada.flotilla_backend.backend_url,
-            robot_container=isar_robot,
-        )
-
-        armada.robots[settings.ISAR_ROBOT_NAME] = IsarRobot(
-            container=isar_robot,
-            name=settings.ISAR_ROBOT_NAME,
-            robot_id=robot_id,
-            port=settings.ISAR_ROBOT_PORT,
-            alias=settings.ISAR_ROBOT_ALIAS,
-            installation_code=installation_code_for_robot,
-        )
-        _assert_robots_require_authentication(armada)
-        armada.log_startup_info()
-        yield armada
-
-
-@pytest.fixture
-def armada_with_single_failing_robot(armada_without_robots: Armada):
-    armada: Armada = armada_without_robots
-    blob_conn_data, blob_conn_metadata = _blob_connection_strings(armada)
-
-    with create_isar_robot_container(
-        network=armada.network,
-        openid_config_url=armada.keycloak.internal_openid_config_url,
-        mqtt_credentials=armada.mqtt_credentials,
-        image=settings.ISAR_ROBOT_IMAGE,
-        config=RobotConfig(
-            name=settings.ISAR_ROBOT_NAME,
-            alias=settings.ISAR_ROBOT_ALIAS,
-            should_fail_normal_task=True,
-        ),
-        port=settings.ISAR_ROBOT_PORT,
-        blob_storage_connection_string_data=blob_conn_data,
-        blob_storage_connection_string_metadata=blob_conn_metadata,
-        test_id=armada.test_id,
-    ) as isar_robot:
-
-        robot_id, installation_code_for_robot = setup_robot_in_flotilla(
-            backend_url=armada.flotilla_backend.backend_url,
-            robot_container=isar_robot,
-        )
-
-        armada.robots[settings.ISAR_ROBOT_NAME] = IsarRobot(
-            container=isar_robot,
-            name=settings.ISAR_ROBOT_NAME,
-            robot_id=robot_id,
-            port=settings.ISAR_ROBOT_PORT,
-            alias=settings.ISAR_ROBOT_ALIAS,
-            installation_code=installation_code_for_robot,
-        )
-        _assert_robots_require_authentication(armada)
-        armada.log_startup_info()
-        yield armada
-
-
 def _assert_no_robot_name_contains_another(roster: List[RobotConfig]) -> None:
     names = [scenario.name for scenario in roster]
     clashing = [(a, b) for a, b in permutations(names, 2) if a in b]
@@ -632,15 +557,10 @@ def _start_robot_roster(
 
 @pytest.fixture
 def armada_with_robot_roster(armada_without_robots: Armada):
-    """Factory yielding an armada with an arbitrary roster of ISAR robots.
+    """Factory yielding an armada with a roster of one or more ISAR robots.
 
     Tests call it with a list of ``RobotConfig``, which each test file
-    defines for itself with ``robot_for_multi_robot_test``.
-
-    That sets ``should_start_at_home=True`` so the robots boot straight into
-    ISAR's ``Home`` state. Without it the bootstrap return-home cycle races the
-    test, and for robots configured to fail return-home it lands them in
-    ``InterventionNeeded`` before a mission can be dispatched.
+    defines for itself.
     """
     with ExitStack() as stack:
 

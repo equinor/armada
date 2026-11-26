@@ -4,7 +4,6 @@ from typing import Dict, List
 from robotics_integration_tests.armada import Armada
 from robotics_integration_tests.custom_containers.isar import (
     RobotConfig,
-    robot_for_multi_robot_test,
 )
 from robotics_integration_tests.settings.settings import settings
 from robotics_integration_tests.utilities.authentication_assertions import (
@@ -28,7 +27,7 @@ from robotics_integration_tests.utilities.teams_notifications import (
 def _outcome_matrix_robot(
     name: str, mission_fails: bool = False, return_home_fails: bool = False
 ) -> RobotConfig:
-    return robot_for_multi_robot_test(
+    return RobotConfig(
         name=name,
         should_fail_normal_task=mission_fails,
         should_fail_return_home=return_home_fails,
@@ -117,7 +116,7 @@ assert (
 
 
 _robot_that_starts_fully_charged_and_drains_quickly = partial(
-    robot_for_multi_robot_test,
+    RobotConfig,
     initial_battery_level=FULL_BATTERY,
     battery_publish_interval_in_seconds=BATTERY_PUBLISH_INTERVAL_SECONDS,
     battery_poll_interval_in_seconds=BATTERY_POLL_INTERVAL_SECONDS,

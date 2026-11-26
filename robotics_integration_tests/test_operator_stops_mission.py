@@ -3,7 +3,7 @@ from typing import Dict
 from robotics_integration_tests.armada import Armada
 from robotics_integration_tests.custom_containers.isar import (
     IsarRobot,
-    robot_for_multi_robot_test,
+    RobotConfig,
 )
 from robotics_integration_tests.utilities.flotilla_backend_api import (
     pause_mission,
@@ -23,11 +23,11 @@ STOP_DURING_MISSION = "StopDuringMission"
 STOP_WHILE_PAUSED = "StopWhilePaused"
 
 ROSTER = [
-    robot_for_multi_robot_test(
+    RobotConfig(
         name=STOP_DURING_MISSION,
         task_duration_in_seconds=TASK_DURATION_THAT_LEAVES_TIME_TO_INTERFERE_SECONDS,
     ),
-    robot_for_multi_robot_test(
+    RobotConfig(
         name=STOP_WHILE_PAUSED,
         task_duration_in_seconds=TASK_DURATION_THAT_LEAVES_TIME_TO_INTERFERE_SECONDS,
     ),
