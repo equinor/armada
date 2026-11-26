@@ -2,9 +2,12 @@ import os
 import subprocess
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from datetime import datetime
-from typing import Dict
+from functools import partial
+from pathlib import Path
+from typing import Dict, NamedTuple
 
 # Disable the testcontainers Reaper (Ryuk) before any testcontainers import.
 # Ryuk is started lazily on the first container.start() call and queries its
@@ -77,12 +80,17 @@ from robotics_integration_tests.utilities.authentication_assertions import (
     assert_authentication_is_enforced,
     isar_url,
 )
+from robotics_integration_tests.utilities.database_template import (
+    DatabaseTemplateSpec,
+    build_database_template,
+)
 from robotics_integration_tests.utilities.flotilla_backend_api import (
     setup_robot_in_flotilla,
     wait_for_backend_to_be_responsive,
     populate_database_with_minimum_models,
     wait_for_database_to_be_populated,
 )
+from robotics_integration_tests.utilities.run_once import run_once_per_session
 from robotics_integration_tests.utilities.sara_backend_api import (
     wait_for_sara_to_be_responsive,
 )
@@ -132,9 +140,24 @@ def _pull_latest_images() -> None:
             logger.info(f"Successfully pulled {image}")
 
 
+@pytest.fixture(scope="session")
+def shared_session_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A directory shared by all pytest-xdist workers of this run, unique per run.
+
+    Session-scoped fixtures run once per worker, so anything that should happen
+    once per run goes through run_once_per_session with this directory.
+    """
+    base_temp: Path = tmp_path_factory.getbasetemp()
+    return base_temp.parent if os.environ.get("PYTEST_XDIST_WORKER") else base_temp
+
+
 @pytest.fixture(scope="session", autouse=True)
-def pull_latest_images():
-    _pull_latest_images()
+def pull_latest_images(shared_session_dir: Path):
+    def pull(marker: Path) -> None:
+        _pull_latest_images()
+        marker.touch()
+
+    run_once_per_session(shared_session_dir, "images-pulled", pull)
 
 
 @pytest.fixture
@@ -173,70 +196,93 @@ def keycloak(network: Network, test_id: str):
             reset_issuer()
 
 
+FLOTILLA_DATABASE_CONNECTION_STRING: str = (
+    f"Host={settings.DB_ALIAS}; Port={5432}; Username={settings.DB_USER}; Password={settings.DB_PASSWORD}; "
+    f"Database={settings.DB_ALIAS}; SSL Mode=Disable;"
+)
+SARA_DATABASE_CONNECTION_STRING: str = (
+    f"Host={settings.SARA_DB_ALIAS}; Port={5432}; Username={settings.SARA_DB_USER}; Password={settings.SARA_DB_PASSWORD}; "
+    f"Database={settings.SARA_DB_ALIAS}; SSL Mode=Disable;"
+)
+
+
+FLOTILLA_DATABASE_TEMPLATE = DatabaseTemplateSpec(
+    file_name="flotilla-database-template.sql",
+    create_database=create_postgres_container,
+    create_migrations_runner=create_migrations_runner_container,
+    connection_string=FLOTILLA_DATABASE_CONNECTION_STRING,
+)
+SARA_DATABASE_TEMPLATE = DatabaseTemplateSpec(
+    file_name="sara-database-template.sql",
+    create_database=create_sara_postgres_container,
+    create_migrations_runner=create_sara_migrations_runner_container,
+    connection_string=SARA_DATABASE_CONNECTION_STRING,
+)
+
+
+class DatabaseTemplates(NamedTuple):
+    """Dumps of fully migrated databases, loaded by each test's own database."""
+
+    flotilla: Path
+    sara: Path
+
+
+@pytest.fixture(scope="session")
+def database_templates(shared_session_dir: Path) -> DatabaseTemplates:
+    """Run the flotilla and sara migrations once per run, side by side."""
+
+    def build(spec: DatabaseTemplateSpec) -> Path:
+        return run_once_per_session(
+            shared_session_dir,
+            spec.file_name,
+            partial(build_database_template, spec=spec),
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        flotilla, sara = executor.map(
+            build, (FLOTILLA_DATABASE_TEMPLATE, SARA_DATABASE_TEMPLATE)
+        )
+    return DatabaseTemplates(flotilla=flotilla, sara=sara)
+
+
 @pytest.fixture
-def flotilla_database(network: Network, test_id: str):
-    with create_postgres_container(network, test_id=test_id) as database:
+def flotilla_database(
+    network: Network, test_id: str, database_templates: DatabaseTemplates
+):
+    # Starting the container waits for a connection over the network, which
+    # postgres only accepts once the template has been loaded.
+    with create_postgres_container(
+        network, test_id=test_id, init_sql_path=database_templates.flotilla
+    ) as database:
         wait_for_port_mapping_to_be_available(container=database, port=5432)
         logger.info(
             f"Postgres URL: {database.get_connection_url()}, "
             f"Port: {database.get_exposed_port(5432)}"
         )
 
-        connection_string: str = (
-            f"Host={settings.DB_ALIAS}; Port={5432}; Username={settings.DB_USER}; Password={settings.DB_PASSWORD}; "
-            f"Database={settings.DB_ALIAS}; SSL Mode=Disable;"
-        )
-
-        with create_migrations_runner_container(
-            network=network,
-            postgres_connection_string=connection_string,
-            test_id=test_id,
-        ) as migrations_runner:
-            # Block until the container exits; returns {"StatusCode": int}
-            result = migrations_runner.get_wrapped_container().wait()
-            status = int(result.get("StatusCode", 1))
-            if status != 0:
-                raise RuntimeError(f"Migrator failed with exit code {status}")
-
-        logger.info("Migrations completed successfully (container exited cleanly)")
-
         yield FlotillaDatabase(
             database=database,
-            connection_string=connection_string,
+            connection_string=FLOTILLA_DATABASE_CONNECTION_STRING,
             alias=settings.DB_ALIAS,
         )
 
 
 @pytest.fixture
-def sara_database(network: Network, test_id: str):
-    with create_sara_postgres_container(network, test_id=test_id) as database:
+def sara_database(
+    network: Network, test_id: str, database_templates: DatabaseTemplates
+):
+    with create_sara_postgres_container(
+        network, test_id=test_id, init_sql_path=database_templates.sara
+    ) as database:
         wait_for_port_mapping_to_be_available(container=database, port=5432)
         logger.info(
             f"Postgres URL: {database.get_connection_url()}, "
             f"Port: {database.get_exposed_port(5432)}"
         )
 
-        connection_string: str = (
-            f"Host={settings.SARA_DB_ALIAS}; Port={5432}; Username={settings.SARA_DB_USER}; Password={settings.SARA_DB_PASSWORD}; "
-            f"Database={settings.SARA_DB_ALIAS}; SSL Mode=Disable;"
-        )
-
-        with create_sara_migrations_runner_container(
-            network=network,
-            postgres_connection_string=connection_string,
-            test_id=test_id,
-        ) as migrations_runner:
-            # Block until the container exits; returns {"StatusCode": int}
-            result = migrations_runner.get_wrapped_container().wait()
-            status = int(result.get("StatusCode", 1))
-            if status != 0:
-                raise RuntimeError(f"Sara migrator failed with exit code {status}")
-
-        logger.info("Sara migrations completed successfully (container exited cleanly)")
-
         yield SaraDatabase(
             database=database,
-            connection_string=connection_string,
+            connection_string=SARA_DATABASE_CONNECTION_STRING,
             alias=settings.SARA_DB_ALIAS,
         )
 

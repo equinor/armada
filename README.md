@@ -159,6 +159,20 @@ The fixture regression tests need no Docker daemon or image pulls:
 uv run --frozen pytest robotics_integration_tests/unit
 ```
 
+To run the integration tests in parallel, leave the fixture regression tests out of the run:
+
+```bash
+uv run pytest -s -n auto --ignore=robotics_integration_tests/unit robotics_integration_tests
+```
+
+pytest-xdist queues two tests per worker, so with the fast fixture tests in the same session
+half of the workers get no integration test until the first ones have finished.
+
+Every test gets its own database containers, but the migrations run only once per run and
+service. The migrated database is dumped to SQL, and each test's Postgres loads that dump when it
+starts. Restoring, compiling and applying the migrations takes most of a minute per service,
+which every test used to pay.
+
 To run the dev lane, the same combination CI uses for a push to `main`:
 
 ```bash
@@ -169,7 +183,7 @@ ISAR_ROBOT_IMAGE=$REGISTRY/isar-robot:dev \
 SARA_IMAGE=$REGISTRY/sara:dev \
 GIT_REPOSITORY_FOR_MIGRATIONS_REF=dev \
 SARA_GIT_REPOSITORY_FOR_MIGRATIONS_REF=dev \
-uv run pytest -s -n auto robotics_integration_tests
+uv run pytest -s -n auto --ignore=robotics_integration_tests/unit robotics_integration_tests
 ```
 
 ### Running against locally built images
