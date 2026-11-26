@@ -1,9 +1,10 @@
-"""Lockdown of one plant, reached by one idle robot and one robot on a mission."""
+"""Lockdown of one plant, reached by one idle robot and one robot on a mission.
 
-from typing import List
+A robot on another plant must be left alone.
+"""
 
 from robotics_integration_tests.armada import Armada
-from robotics_integration_tests.custom_containers.isar import KAARSTO
+from robotics_integration_tests.custom_containers.isar import HULDRA, KAARSTO
 from robotics_integration_tests.scenarios.fleet import RobotScenario
 
 # Lockdown is triggered once the idle robot is away from home and the other
@@ -16,11 +17,13 @@ TASK_DURATION_THAT_OUTLASTS_THE_SHORT_MISSION_SECONDS = 25.0
 RETURN_HOME_DELAY_THAT_LETS_THE_TEST_GO_FIRST_SECONDS = 30
 
 LOCKED_DOWN_PLANT = KAARSTO
+OTHER_PLANT = HULDRA
 
 LOCKDOWN_WHILE_IDLE = "LockdownWhileIdle"
 LOCKDOWN_DURING_MISSION = "LockdownDuringMission"
+BYSTANDER_ON_ANOTHER_PLANT = "BystanderOnAnotherPlant"
 
-ROSTER = [
+LOCKED_DOWN_ROBOTS = [
     # A robot that is already home enters Lockdown directly, so this one is
     # sent away first.
     # AwaitNextMission -> GoingToLockdown -> Lockdown
@@ -39,20 +42,24 @@ ROSTER = [
     ),
 ]
 
+# Given its mission during the lockdown, which it must complete.
+BYSTANDER = RobotScenario(name=BYSTANDER_ON_ANOTHER_PLANT, plant=OTHER_PLANT)
+
+ROSTER = [*LOCKED_DOWN_ROBOTS, BYSTANDER]
+
 
 def assert_only_the_lockdown_robots_are_on_the_locked_down_plant(
-    armada: Armada, other_robots: List[RobotScenario]
+    armada: Armada,
 ) -> None:
     """Checked against the plant each robot registered with in Flotilla."""
     locked_down: str = LOCKED_DOWN_PLANT.installation_code
-    for robot in ROSTER:
+    for robot in LOCKED_DOWN_ROBOTS:
         plant: str = armada.robots[robot.name].installation_code
         assert plant == locked_down, (
             f"{robot.name} must be on the plant that is locked down, "
             f"{locked_down}, but is on {plant}"
         )
-    for robot in other_robots:
-        assert armada.robots[robot.name].installation_code != locked_down, (
-            f"{robot.name} must be on another plant than the one that is locked "
-            f"down, {locked_down}"
-        )
+    assert armada.robots[BYSTANDER.name].installation_code != locked_down, (
+        f"{BYSTANDER.name} must be on another plant than the one that is locked "
+        f"down, {locked_down}"
+    )
