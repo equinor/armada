@@ -9,9 +9,6 @@ from robotics_integration_tests.utilities.authentication_assertions import (
 from robotics_integration_tests.utilities.blob_storage import (
     wait_for_all_mission_blobs,
 )
-from robotics_integration_tests.utilities.failure_notes import (
-    naming_the_robot_of_each_mission_run,
-)
 from robotics_integration_tests.utilities.fleet import (
     POLL_INTERVAL_IN_SECONDS,
     Fleet,
@@ -178,20 +175,14 @@ def _assert_blobs_and_notifications_of_the_outcome_matrix(fleet: Fleet) -> None:
 
     # The blob folder path contains the mission run ID, so blobs can be counted
     # per robot although every robot uploads to the same container.
-    with naming_the_robot_of_each_mission_run(
-        {
-            fleet.mission_runs[robot.name][0]["id"]: robot.name
+    wait_for_all_mission_blobs(
+        container_name=OUTCOME_MATRIX_ROBOTS[0].plant.installation_code.lower(),
+        connection_string=raw_storage_conn,
+        mission_blob_expectations={
+            fleet.mission_runs[robot.name][0]["id"]: expected_blob_count(robot)
             for robot in OUTCOME_MATRIX_ROBOTS
-        }
-    ):
-        wait_for_all_mission_blobs(
-            container_name=OUTCOME_MATRIX_ROBOTS[0].plant.installation_code.lower(),
-            connection_string=raw_storage_conn,
-            mission_blob_expectations={
-                fleet.mission_runs[robot.name][0]["id"]: expected_blob_count(robot)
-                for robot in OUTCOME_MATRIX_ROBOTS
-            },
-        )
+        },
+    )
 
     receiver = armada.teams_webhook_receiver
     assert receiver is not None, "Teams webhook receiver was not started"
