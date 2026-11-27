@@ -6,6 +6,7 @@ from robotics_integration_tests.custom_containers.isar import (
     RobotConfig,
 )
 from robotics_integration_tests.utilities.flotilla_backend_api import (
+    is_mission_run_status,
     release_maintenance_mode,
     schedule_dummy_mission,
     set_maintenance_mode,
@@ -76,9 +77,6 @@ def test_maintenance_mode_while_idle_and_during_mission(
         {MAINTENANCE_WHILE_IDLE: "Home", MAINTENANCE_DURING_MISSION: "Home"},
         timeout=TIMEOUT_SECONDS,
     )
-    wait_for_mission_run_status(
-        backend_url,
-        mission_run["id"],
-        STATUS_OF_A_MISSION_INTERRUPTED_BY_MAINTENANCE,
-        timeout=TIMEOUT_SECONDS,
-    )
+    assert is_mission_run_status(
+        backend_url, mission_run["id"], STATUS_OF_A_MISSION_INTERRUPTED_BY_MAINTENANCE
+    ), "The interrupted mission must not be resumed when the robot is released"

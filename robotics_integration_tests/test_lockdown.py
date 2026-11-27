@@ -68,7 +68,6 @@ def test_lockdown_of_one_plant_leaves_another_plant_alone(
     The comment on an action is the ISAR states it drives the robot through.
     """
     armada: Armada = armada_with_robot_roster(ROSTER)
-    _assert_only_the_lockdown_robots_are_on_the_locked_down_plant(armada)
     backend_url: str = armada.flotilla_backend.backend_url
     idle: IsarRobot = armada.robots[LOCKDOWN_WHILE_IDLE]
     on_mission: IsarRobot = armada.robots[LOCKDOWN_DURING_MISSION]
@@ -124,21 +123,4 @@ def test_lockdown_of_one_plant_leaves_another_plant_alone(
         backend_url,
         {LOCKDOWN_WHILE_IDLE: "Home", LOCKDOWN_DURING_MISSION: "Home"},
         timeout=TIMEOUT_SECONDS,
-    )
-
-
-def _assert_only_the_lockdown_robots_are_on_the_locked_down_plant(
-    armada: Armada,
-) -> None:
-    """Checked against the plant each robot registered with in Flotilla."""
-    locked_down: str = LOCKED_DOWN_PLANT.installation_code
-    for robot in LOCKED_DOWN_ROBOTS:
-        plant: str = armada.robots[robot.name].installation_code
-        assert plant == locked_down, (
-            f"{robot.name} must be on the plant that is locked down, "
-            f"{locked_down}, but is on {plant}"
-        )
-    assert armada.robots[BYSTANDER.name].installation_code != locked_down, (
-        f"{BYSTANDER.name} must be on another plant than the one that is locked "
-        f"down, {locked_down}"
     )

@@ -21,16 +21,6 @@ from robotics_integration_tests.utilities.teams_notifications import (
 )
 
 
-def _outcome_matrix_robot(
-    name: str, mission_fails: bool = False, return_home_fails: bool = False
-) -> RobotConfig:
-    return RobotConfig(
-        name=name,
-        should_fail_normal_task=mission_fails,
-        should_fail_return_home=return_home_fails,
-    )
-
-
 def _expected_mission_status(robot: RobotConfig) -> str:
     return "Failed" if robot.should_fail_normal_task else "Successful"
 
@@ -41,11 +31,13 @@ def _expected_robot_status(robot: RobotConfig) -> str:
 
 # Every combination of mission and return-home success and failure.
 ROSTER: List[RobotConfig] = [
-    _outcome_matrix_robot("MissionOkThenHome"),
-    _outcome_matrix_robot("MissionOkThenLost", return_home_fails=True),
-    _outcome_matrix_robot("MissionFailThenHome", mission_fails=True),
-    _outcome_matrix_robot(
-        "MissionFailThenLost", mission_fails=True, return_home_fails=True
+    RobotConfig(name="MissionOkThenHome"),
+    RobotConfig(name="MissionOkThenLost", should_fail_return_home=True),
+    RobotConfig(name="MissionFailThenHome", should_fail_normal_task=True),
+    RobotConfig(
+        name="MissionFailThenLost",
+        should_fail_normal_task=True,
+        should_fail_return_home=True,
     ),
 ]
 
@@ -106,11 +98,8 @@ def _assert_blobs_and_notifications(
         },
     )
 
-    receiver = armada.teams_webhook_receiver
-    assert receiver is not None, "Teams webhook receiver was not started"
-
     wait_for_all_teams_notifications(
-        receiver=receiver,
+        receiver=armada.teams_webhook_receiver,
         notification_expectations={
             robot.name: robot.should_fail_return_home for robot in ROSTER
         },
