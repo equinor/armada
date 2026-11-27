@@ -52,9 +52,7 @@ class Settings(BaseSettings):
     # certificate is issued for FLOTILLA_BROKER_ALIAS, which ISAR verifies.
     FLOTILLA_BROKER_NAME: str = Field(default="flotilla_broker")
     FLOTILLA_BROKER_ALIAS: str = Field(default="broker")
-    FLOTILLA_BROKER_IMAGE: str = Field(
-        default="ghcr.io/equinor/flotilla-broker:latest"
-    )
+    FLOTILLA_BROKER_IMAGE: str = Field(default="ghcr.io/equinor/flotilla-broker:latest")
     FLOTILLA_BROKER_PORT: int = Field(default=1883)
 
     # PostgreSQL Flotilla Database environment
@@ -95,18 +93,14 @@ class Settings(BaseSettings):
     )
 
     # ISAR Robot environment
-    ISAR_ROBOT_IMAGE: str = Field(
-        default="ghcr.io/equinor/isar-robot:latest"
-    )
+    ISAR_ROBOT_IMAGE: str = Field(default="ghcr.io/equinor/isar-robot:latest")
     ISAR_ROBOT_PORT: int = Field(default=3000)
 
     # SARA environment and configuration
     SARA_RAW_STORAGE_CONTAINER: str = Field(default="sara-raw")
     SARA_ANON_STORAGE_CONTAINER: str = Field(default="sara-anon")
     SARA_VIS_STORAGE_CONTAINER: str = Field(default="sara-vis")
-    SARA_IMAGE: str = Field(
-        default="ghcr.io/equinor/sara:latest"
-    )
+    SARA_IMAGE: str = Field(default="ghcr.io/equinor/sara:latest")
     SARA_NAME: str = Field(default="sara")
     SARA_PORT: int = Field(default=8100)
     SARA_ALIAS: str = Field(default="sara")
