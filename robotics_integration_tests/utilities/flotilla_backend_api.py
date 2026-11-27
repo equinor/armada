@@ -7,6 +7,7 @@ import requests
 from loguru import logger
 from requests import Response
 
+from robotics_integration_tests.custom_containers.isar import IsarRobot
 from robotics_integration_tests.custom_containers.stream_logging_docker_container import (
     StreamLoggingDockerContainer,
 )
@@ -33,9 +34,36 @@ def _add_headers() -> Dict[str, str]:
     return headers
 
 
+def _assert_request_succeeded(
+    response: Response, description: str, payload: Dict | None = None
+) -> None:
+    """Fail with the problem details Flotilla answered with.
+
+    Flotilla puts the reason in a ProblemDetails body, so surfacing it is the
+    difference between a debuggable failure and a bare status code.
+    """
+    if response.ok:
+        return
+
+    try:
+        problem = response.json()
+    except Exception:
+        problem = None
+    request_payload: str = (
+        f"Request payload:\n{payload}\n" if payload is not None else ""
+    )
+    raise AssertionError(
+        f"{description} failed: {response.request.method} {response.url} "
+        f"returned {response.status_code}\n"
+        f"{request_payload}"
+        f"Response headers: {dict(response.headers)}\n"
+        f"Response body:\n{response.text}\n"
+        f"Parsed JSON (if any):\n{problem}"
+    )
+
+
 def _list_database_entries(backend_url: str, request_path: str) -> List[Dict]:
     logger.info(f"Listing database entries for path: {backend_url}/{request_path}")
-    headeers = _add_headers()
     response: Response = requests.get(
         f"{backend_url}/{request_path}", headers=_add_headers()
     )
@@ -126,26 +154,12 @@ def create_mission(backend_url: str, payload: Dict) -> Dict:
 
 
 def call_create_mission(backend_url: str, payload: Dict) -> Dict:
-    url: str = f"{backend_url}/missions/definitions"
     response: Response = requests.post(
-        url,
+        f"{backend_url}/missions/definitions",
         json=payload,
         headers=_add_headers(),
     )
-    if not response.ok:
-        body = response.text
-        try:
-            problem = response.json()
-        except Exception:
-            problem = None
-        raise AssertionError(
-            f"POST {url} returned {response.status_code}\n"
-            f"Request payload:\n{payload}\n"
-            f"Response headers: {dict(response.headers)}\n"
-            f"Response body:\n{body}\n"
-            f"Parsed JSON (if any):\n{problem}"
-        )
-    response.raise_for_status()
+    _assert_request_succeeded(response, "Creating mission", payload)
     return response.json()
 
 
@@ -166,26 +180,12 @@ def call_schedule_mission(backend_url: str, robot_id: str, mission_id: str) -> D
     payload: Dict = {
         "robotId": robot_id,
     }
-    url: str = f"{backend_url}/missions/schedule/{mission_id}"
     response: Response = requests.post(
-        url,
+        f"{backend_url}/missions/schedule/{mission_id}",
         json=payload,
         headers=_add_headers(),
     )
-    if not response.ok:
-        body = response.text
-        try:
-            problem = response.json()
-        except Exception:
-            problem = None
-        raise AssertionError(
-            f"POST {url} returned {response.status_code}\n"
-            f"Request payload:\n{payload}\n"
-            f"Response headers: {dict(response.headers)}\n"
-            f"Response body:\n{body}\n"
-            f"Parsed JSON (if any):\n{problem}"
-        )
-    response.raise_for_status()
+    _assert_request_succeeded(response, "Scheduling mission", payload)
     return response.json()
 
 
@@ -404,10 +404,14 @@ def wait_for_database_to_be_populated(backend_url: str, timeout: int = 60) -> No
             return
 
 
-def setup_robot_in_flotilla(
+def register_robot_in_flotilla(
     backend_url: str, robot_container: StreamLoggingDockerContainer
 ) -> Tuple[str, str]:
-    """Register with the test administrator before assigning an inspection area."""
+    """Register with the test administrator before assigning an inspection area.
+
+    Does not wait for the robot to come online, so that the robots of a test
+    can boot side by side.
+    """
     env = robot_container.env
     installation_code_for_robot: str = env["ISAR_PLANT_SHORT_NAME"]
     response: Response = requests.post(
@@ -443,11 +447,6 @@ def setup_robot_in_flotilla(
     )
     wait_for_inspection_area_to_be_updated_on_robot(
         backend_url=backend_url, robot_id=robot_id
-    )
-    wait_for_robot_status(
-        backend_url=backend_url,
-        robot_name=env["ISAR_ROBOT_NAME"],
-        expected_status="Home",
     )
     return robot_id, installation_code_for_robot
 
@@ -488,39 +487,9 @@ def wait_for_inspection_area_to_be_updated_on_robot(
 def wait_for_mission_run_status(
     backend_url: str, mission_run_id: str, expected_status: str, timeout: int = 60
 ) -> Dict:
-    start_time: datetime = datetime.now()
-    while True:
-        if datetime.now() - start_time > timedelta(seconds=timeout):
-            raise RuntimeError(
-                f"Mission run '{mission_run_id}' did not reach status '{expected_status}' within the given timeout "
-                f"{timeout} seconds"
-            )
-
-        try:
-            mission_run: Dict = get_mission_run_by_id(
-                backend_url=backend_url, mission_run_id=mission_run_id
-            )
-        except Exception:
-            logger.warning(
-                f"Failed to retrieve mission run with ID {mission_run_id}, most likely because it has not been written "
-                f"to the database yet, will retry..."
-            )
-            time.sleep(1)
-            continue
-
-        current_status: str = mission_run.get("status")
-        if current_status == expected_status:
-            logger.info(
-                f"Mission run with ID '{mission_run_id}' has reached expected status '{expected_status}'"
-            )
-            return mission_run
-        else:
-            logger.info(
-                f"Mission run with ID '{mission_run_id}' is in status '{current_status}', "
-                f"waiting for status '{expected_status}'"
-            )
-            time.sleep(1)
-            continue
+    return wait_for_all_mission_run_statuses(
+        backend_url, {mission_run_id: expected_status}, timeout=timeout
+    )[mission_run_id]
 
 
 def wait_for_second_task_status_of_mission_run(
@@ -547,15 +516,15 @@ def wait_for_second_task_status_of_mission_run(
             continue
 
         tasks: List = mission_run.get("tasks")
-        first_task_status: str = tasks[1].get("status")
-        if first_task_status == expected_status:
+        second_task_status: str = tasks[1].get("status")
+        if second_task_status == expected_status:
             logger.info(
                 f"Second task in mission with ID '{mission_run_id}' has reached expected status '{expected_status}'"
             )
             return tasks[1]
         else:
             logger.info(
-                f"Second task in mission run with ID '{mission_run_id}' is in status '{first_task_status}', "
+                f"Second task in mission run with ID '{mission_run_id}' is in status '{second_task_status}', "
                 f"waiting for status '{expected_status}'"
             )
             time.sleep(1)
@@ -565,34 +534,24 @@ def wait_for_second_task_status_of_mission_run(
 def wait_for_robot_status(
     backend_url: str, robot_name: str, expected_status: str, timeout: int = 60
 ) -> Dict:
-    start_time: datetime = datetime.now()
-    while True:
-        if datetime.now() - start_time > timedelta(seconds=timeout):
-            raise RuntimeError(
-                f"Robot '{robot_name}' did not reach status '{expected_status}' within the given timeout {timeout} seconds"
-            )
+    return wait_for_all_robot_statuses(
+        backend_url, {robot_name: expected_status}, timeout=timeout
+    )[robot_name]
 
-        try:
-            robot: Dict = get_robot_by_name(backend_url=backend_url, name=robot_name)
-        except Exception:
-            logger.warning(
-                f"Failed to retrieve robot with name {robot_name}, will retry until timeout..."
-            )
-            time.sleep(1)
-            continue
 
-        current_status: str = robot.get("status")
-        if current_status == expected_status:
-            logger.info(
-                f"Robot with name '{robot_name}' has reached expected status '{expected_status}'"
-            )
-            return robot
-        else:
-            logger.info(
-                f"Robot with name '{robot_name}' is in status '{current_status}', waiting for status '{expected_status}'"
-            )
-            time.sleep(1)
-            continue
+def schedule_dummy_mission(backend_url: str, robot: IsarRobot) -> Dict:
+    mission_payload: Dict = get_dummy_mission_payload_with_installation(
+        robot.installation_code
+    )
+    mission: Dict = create_mission(backend_url=backend_url, payload=mission_payload)
+    mission_run: Dict = schedule_mission(
+        backend_url=backend_url, robot_id=robot.robot_id, mission_id=mission["id"]
+    )
+    logger.info(
+        f"Scheduled mission {mission['id']} with run id {mission_run['id']} "
+        f"on robot {robot.name}"
+    )
+    return mission_run
 
 
 def wait_for_all_mission_run_statuses(
@@ -703,43 +662,63 @@ def wait_for_all_robot_statuses(
     return results
 
 
+def _post_robot_command(url: str, description: str) -> None:
+    response: Response = requests.post(url, headers=_add_headers())
+    _assert_request_succeeded(response, description)
+    logger.info(f"{description} succeeded")
+
+
 def pause_mission(backend_url: str, robot_id: str) -> None:
-    url: str = f"{backend_url}/robots/{robot_id}/pause"
-    response: Response = requests.post(
-        url,
-        headers=_add_headers(),
+    _post_robot_command(
+        f"{backend_url}/robots/{robot_id}/pause", f"Pausing mission on robot {robot_id}"
     )
-    if not response.ok:
-        body = response.text
-        try:
-            problem = response.json()
-        except Exception:
-            problem = None
-        raise AssertionError(
-            f"POST {url} returned {response.status_code}\n"
-            f"Response headers: {dict(response.headers)}\n"
-            f"Response body:\n{body}\n"
-            f"Parsed JSON (if any):\n{problem}"
-        )
-    response.raise_for_status()
 
 
 def resume_mission(backend_url: str, robot_id: str) -> None:
-    url = str(f"{backend_url}/robots/{robot_id}/resume")
-    response: Response = requests.post(
-        url,
-        headers=_add_headers(),
+    _post_robot_command(
+        f"{backend_url}/robots/{robot_id}/resume",
+        f"Resuming mission on robot {robot_id}",
     )
-    if not response.ok:
-        body = response.text
-        try:
-            problem = response.json()
-        except Exception:
-            problem = None
-        raise AssertionError(
-            f"POST {url} returned {response.status_code}\n"
-            f"Response headers: {dict(response.headers)}\n"
-            f"Response body:\n{body}\n"
-            f"Parsed JSON (if any):\n{problem}"
-        )
-    response.raise_for_status()
+
+
+def stop_mission(backend_url: str, robot_id: str) -> None:
+    _post_robot_command(
+        f"{backend_url}/robots/{robot_id}/stop",
+        f"Stopping mission on robot {robot_id}",
+    )
+
+
+def set_maintenance_mode(backend_url: str, robot_id: str) -> None:
+    _post_robot_command(
+        f"{backend_url}/robots/set-maintenance-mode/{robot_id}",
+        f"Setting maintenance mode on robot {robot_id}",
+    )
+
+
+def release_maintenance_mode(backend_url: str, robot_id: str) -> None:
+    _post_robot_command(
+        f"{backend_url}/robots/release-maintenance-mode/{robot_id}",
+        f"Releasing robot {robot_id} from maintenance mode",
+    )
+
+
+def send_all_robots_to_lockdown(backend_url: str, installation_code: str) -> None:
+    """Trigger lockdown for a whole installation.
+
+    Flotilla has no per-robot lockdown endpoint: lockdown is an installation-wide
+    emergency action, which is also how an operator invokes it. Robots on the
+    installation each enter lockdown from whatever state they are currently in.
+    """
+    _post_robot_command(
+        f"{backend_url}/emergency-action/{installation_code}"
+        "/abort-current-missions-and-send-all-robots-to-safe-zone",
+        f"Sending all robots on {installation_code} to lockdown",
+    )
+
+
+def clear_emergency_state(backend_url: str, installation_code: str) -> None:
+    """Release a whole installation from lockdown."""
+    _post_robot_command(
+        f"{backend_url}/emergency-action/{installation_code}/clear-emergency-state",
+        f"Clearing emergency state on {installation_code}",
+    )
