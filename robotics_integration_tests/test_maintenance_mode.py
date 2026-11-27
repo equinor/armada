@@ -43,9 +43,7 @@ def test_maintenance_mode_while_idle_and_during_mission(
     idle: IsarRobot = armada.robots[MAINTENANCE_WHILE_IDLE]
     on_mission: IsarRobot = armada.robots[MAINTENANCE_DURING_MISSION]
 
-    mission_run: Dict = schedule_dummy_mission(
-        backend_url, on_mission.robot_id, on_mission.installation_code
-    )
+    mission_run: Dict = schedule_dummy_mission(backend_url, on_mission)
     # Home -> Maintenance
     set_maintenance_mode(backend_url, idle.robot_id)
 

@@ -1,17 +1,13 @@
 from typing import Dict
 
-from loguru import logger
-
 from robotics_integration_tests.armada import Armada
-from robotics_integration_tests.custom_containers.isar import RobotConfig
+from robotics_integration_tests.custom_containers.isar import IsarRobot, RobotConfig
 from robotics_integration_tests.settings.settings import settings
 from robotics_integration_tests.utilities.blob_storage import (
     wait_until_all_expected_files_uploaded,
 )
 from robotics_integration_tests.utilities.flotilla_backend_api import (
-    create_mission,
-    get_dummy_mission_payload_with_installation,
-    schedule_mission,
+    schedule_dummy_mission,
     wait_for_mission_run_status,
     wait_for_robot_status,
 )
@@ -33,24 +29,14 @@ def test_simple_mission_with_three_tags_is_successful(
     armada_with_robot_roster,
 ) -> None:
     armada: Armada = armada_with_robot_roster(ROSTER)
-    robot_name, robot = next(iter(armada.robots.items()))
-    mission_payload: Dict = get_dummy_mission_payload_with_installation(robot.installation_code)
-    mission: Dict = create_mission(backend_url=armada.flotilla_backend.backend_url, payload=mission_payload)
-    mission_run: Dict = schedule_mission(
-        backend_url=armada.flotilla_backend.backend_url,
-        robot_id=robot.robot_id,
-        mission_id=mission["id"],
+    robot: IsarRobot = armada.robots[ROSTER[0].name]
+    mission_run: Dict = schedule_dummy_mission(
+        armada.flotilla_backend.backend_url, robot
     )
 
-    mission_run_id: str = mission_run.get("id")
-    logger.info(
-        f"Scheduled mission {mission['id']} with id {mission_run['id']} "
-        f"on robot {robot_name}"
-        )
-
-    _ = wait_for_mission_run_status(
+    wait_for_mission_run_status(
         backend_url=armada.flotilla_backend.backend_url,
-        mission_run_id=mission_run_id,
+        mission_run_id=mission_run["id"],
         expected_status="Successful",
     )
 
@@ -62,9 +48,9 @@ def test_simple_mission_with_three_tags_is_successful(
         expected_file_count=len(mission_run.get("tasks")),
     )
 
-    _ = wait_for_robot_status(
+    wait_for_robot_status(
         backend_url=armada.flotilla_backend.backend_url,
-        robot_name=robot_name,
+        robot_name=robot.name,
         expected_status="Home",
     )
 

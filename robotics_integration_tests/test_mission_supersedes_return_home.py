@@ -51,7 +51,7 @@ def test_new_mission_supersedes_a_running_and_a_paused_return_home(
     # after a mission. A robot that is already home has nothing to return
     # from, which is why these two are given a mission first.
     for robot in (returning, paused):
-        schedule_dummy_mission(backend_url, robot.robot_id, robot.installation_code)
+        schedule_dummy_mission(backend_url, robot)
 
     wait_for_all_robot_statuses(
         backend_url,
@@ -62,9 +62,7 @@ def test_new_mission_supersedes_a_running_and_a_paused_return_home(
         timeout=TIMEOUT_SECONDS,
     )
     # ReturningHome -> StoppingReturnHome -> Monitor
-    superseding_run: Dict = schedule_dummy_mission(
-        backend_url, returning.robot_id, returning.installation_code
-    )
+    superseding_run: Dict = schedule_dummy_mission(backend_url, returning)
     # ReturningHome -> PausingReturnHome -> ReturnHomePaused
     pause_mission(backend_url, paused.robot_id)
 
@@ -75,9 +73,7 @@ def test_new_mission_supersedes_a_running_and_a_paused_return_home(
         timeout=TIMEOUT_SECONDS,
     )
     # ReturnHomePaused -> StoppingPausedReturnHome -> Monitor
-    superseding_run_after_pause: Dict = schedule_dummy_mission(
-        backend_url, paused.robot_id, paused.installation_code
-    )
+    superseding_run_after_pause: Dict = schedule_dummy_mission(backend_url, paused)
 
     # The mission that supersedes the return home is the one that must succeed.
     wait_for_all_mission_run_statuses(

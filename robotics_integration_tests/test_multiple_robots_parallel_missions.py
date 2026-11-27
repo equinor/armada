@@ -58,11 +58,7 @@ def test_robots_play_out_their_missions_without_interference(
     backend_url: str = armada.flotilla_backend.backend_url
 
     mission_runs: Dict[str, Dict] = {
-        robot.name: schedule_dummy_mission(
-            backend_url,
-            armada.robots[robot.name].robot_id,
-            armada.robots[robot.name].installation_code,
-        )
+        robot.name: schedule_dummy_mission(backend_url, armada.robots[robot.name])
         for robot in ROSTER
     }
 

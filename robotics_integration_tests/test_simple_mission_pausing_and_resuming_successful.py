@@ -3,7 +3,7 @@ from typing import Dict
 from loguru import logger
 
 from robotics_integration_tests.armada import Armada
-from robotics_integration_tests.custom_containers.isar import RobotConfig
+from robotics_integration_tests.custom_containers.isar import IsarRobot, RobotConfig
 from robotics_integration_tests.settings.settings import settings
 from robotics_integration_tests.utilities.authentication_assertions import (
     assert_cannot_pause_mission,
@@ -14,10 +14,8 @@ from robotics_integration_tests.utilities.blob_storage import (
 from robotics_integration_tests.utilities.flotilla_backend_api import (
     pause_mission,
     resume_mission,
-    create_mission,
-    get_dummy_mission_payload_with_installation,
     get_mission_run_by_id,
-    schedule_mission,
+    schedule_dummy_mission,
     wait_for_mission_run_status,
     wait_for_robot_status,
     wait_for_second_task_status_of_mission_run,
@@ -30,22 +28,13 @@ def test_simple_mission_pausing_and_resuming_successfully(
     armada_with_robot_roster,
 ) -> None:
     armada: Armada = armada_with_robot_roster(ROSTER)
-    robot_name, robot = next(iter(armada.robots.items()))
-    mission_payload: Dict = get_dummy_mission_payload_with_installation(robot.installation_code)
-    mission: Dict = create_mission(backend_url=armada.flotilla_backend.backend_url, payload=mission_payload)
-
-    mission_run: Dict = schedule_mission(
-        backend_url=armada.flotilla_backend.backend_url,
-        robot_id=robot.robot_id,
-        mission_id=mission["id"],
+    robot: IsarRobot = armada.robots[ROSTER[0].name]
+    mission_run: Dict = schedule_dummy_mission(
+        armada.flotilla_backend.backend_url, robot
     )
+    mission_run_id: str = mission_run["id"]
 
-    mission_run_id: str = mission_run.get("id")
-    logger.info(
-        f"Scheduled mission {mission['id']} with id {mission_run_id} on robot {robot_name}"
-    )
-
-    _ = wait_for_second_task_status_of_mission_run(
+    wait_for_second_task_status_of_mission_run(
         backend_url=armada.flotilla_backend.backend_url,
         mission_run_id=mission_run_id,
         expected_status="InProgress",
@@ -59,17 +48,16 @@ def test_simple_mission_pausing_and_resuming_successfully(
         backend_url=armada.flotilla_backend.backend_url,
         mission_run_id=mission_run_id,
     ).get("status")
-    assert status_after_unauthorised_attempts != "Paused", (
-        "An unauthorised caller managed to pause the mission run "
-        f"{mission_run_id}"
-    )
+    assert (
+        status_after_unauthorised_attempts != "Paused"
+    ), f"An unauthorised caller managed to pause the mission run {mission_run_id}"
 
     pause_mission(
         backend_url=armada.flotilla_backend.backend_url, robot_id=robot.robot_id
     )
-    logger.info(f"Paused mission run {mission_run_id} on robot {robot_name}")
+    logger.info(f"Paused mission run {mission_run_id} on robot {robot.name}")
 
-    _ = wait_for_mission_run_status(
+    wait_for_mission_run_status(
         backend_url=armada.flotilla_backend.backend_url,
         mission_run_id=mission_run_id,
         expected_status="Paused",
@@ -78,15 +66,15 @@ def test_simple_mission_pausing_and_resuming_successfully(
     resume_mission(
         backend_url=armada.flotilla_backend.backend_url, robot_id=robot.robot_id
     )
-    logger.info(f"Resumed mission run {mission_run_id} on robot {robot_name}")
+    logger.info(f"Resumed mission run {mission_run_id} on robot {robot.name}")
 
-    _ = wait_for_mission_run_status(
+    wait_for_mission_run_status(
         backend_url=armada.flotilla_backend.backend_url,
         mission_run_id=mission_run_id,
         expected_status="Ongoing",
     )
 
-    _ = wait_for_mission_run_status(
+    wait_for_mission_run_status(
         backend_url=armada.flotilla_backend.backend_url,
         mission_run_id=mission_run_id,
         expected_status="Successful",
@@ -100,8 +88,8 @@ def test_simple_mission_pausing_and_resuming_successfully(
         expected_file_count=len(mission_run.get("tasks")),
     )
 
-    _ = wait_for_robot_status(
+    wait_for_robot_status(
         backend_url=armada.flotilla_backend.backend_url,
-        robot_name=robot_name,
+        robot_name=robot.name,
         expected_status="Home",
     )

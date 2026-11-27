@@ -42,7 +42,7 @@ HULDRA = Plant(installation_code="HUA", name="Huldra")
 KAARSTO = Plant(installation_code="KAA", name="Kårstø")
 
 
-@dataclass
+@dataclass(frozen=True)
 class RobotConfig:
     """Everything that makes one ISAR robot differ from another.
 
@@ -50,7 +50,6 @@ class RobotConfig:
     """
 
     name: str
-    alias: str = ""
     should_fail_normal_task: bool = False
     should_fail_return_home: bool = False
     # Boots straight into Home, so the bootstrap return home cannot race the
@@ -70,10 +69,11 @@ class RobotConfig:
     battery_poll_interval_in_seconds: float = 5.0
     plant: Plant = HULDRA
 
-    def __post_init__(self) -> None:
-        if not self.alias:
-            snake_case_name: str = re.sub(r"(?<!^)(?=[A-Z])", "_", self.name).lower()
-            self.alias = f"isar_{snake_case_name}"
+    @property
+    def alias(self) -> str:
+        """The robot's hostname on the test network, derived from its name."""
+        snake_case_name: str = re.sub(r"(?<!^)(?=[A-Z])", "_", self.name).lower()
+        return f"isar_{snake_case_name}"
 
 
 def create_isar_robot_container(
@@ -81,11 +81,11 @@ def create_isar_robot_container(
     openid_config_url: str,
     mqtt_credentials: MqttCredentials,
     config: RobotConfig,
-    image: str = "ghcr.io/equinor/isar-robot:latest",
-    port: int = 3000,
-    blob_storage_connection_string_data: str = "",
-    blob_storage_connection_string_metadata: str = "",
-    test_id: str = "",
+    image: str,
+    port: int,
+    blob_storage_connection_string_data: str,
+    blob_storage_connection_string_metadata: str,
+    test_id: str,
 ) -> StreamLoggingDockerContainer:
 
     failure_prob = 1.0 if config.should_fail_normal_task else 0.0

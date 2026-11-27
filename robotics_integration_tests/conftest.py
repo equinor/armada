@@ -87,7 +87,8 @@ from robotics_integration_tests.utilities.database_template import (
     build_database_template,
 )
 from robotics_integration_tests.utilities.flotilla_backend_api import (
-    setup_robot_in_flotilla,
+    register_robot_in_flotilla,
+    wait_for_all_robot_statuses,
     wait_for_backend_to_be_responsive,
     populate_database_with_minimum_models,
     wait_for_database_to_be_populated,
@@ -502,7 +503,7 @@ def _assert_robots_require_authentication(armada: Armada) -> None:
 
 
 def _assert_no_robot_name_contains_another(roster: List[RobotConfig]) -> None:
-    names = [scenario.name for scenario in roster]
+    names = [robot_config.name for robot_config in roster]
     clashing = [(a, b) for a, b in permutations(names, 2) if a in b]
     assert not clashing, (
         f"Teams notifications are matched to a robot by substring, so no robot "
@@ -513,17 +514,18 @@ def _assert_no_robot_name_contains_another(roster: List[RobotConfig]) -> None:
 def _start_robot_roster(
     armada: Armada, roster: List[RobotConfig], stack: ExitStack
 ) -> Armada:
-    """Start one ISAR container per scenario and register each with Flotilla."""
+    """Start one ISAR container per robot config and register each with Flotilla."""
     _assert_no_robot_name_contains_another(roster)
     blob_conn_data, blob_conn_metadata = _blob_connection_strings(armada)
+    backend_url: str = armada.flotilla_backend.backend_url
 
-    for scenario in roster:
+    for robot_config in roster:
         container = stack.enter_context(
             create_isar_robot_container(
                 network=armada.network,
                 openid_config_url=armada.keycloak.internal_openid_config_url,
                 mqtt_credentials=armada.mqtt_credentials,
-                config=scenario,
+                config=robot_config,
                 image=settings.ISAR_ROBOT_IMAGE,
                 port=settings.ISAR_ROBOT_PORT,
                 blob_storage_connection_string_data=blob_conn_data,
@@ -536,20 +538,24 @@ def _start_robot_roster(
             container=container, port=settings.ISAR_ROBOT_PORT
         )
 
-        robot_id, installation_code = setup_robot_in_flotilla(
-            backend_url=armada.flotilla_backend.backend_url,
+        robot_id, installation_code = register_robot_in_flotilla(
+            backend_url=backend_url,
             robot_container=container,
         )
 
-        armada.robots[scenario.name] = IsarRobot(
+        armada.robots[robot_config.name] = IsarRobot(
             container=container,
-            name=scenario.name,
+            name=robot_config.name,
             robot_id=robot_id,
             port=settings.ISAR_ROBOT_PORT,
-            alias=scenario.alias,
+            alias=robot_config.alias,
             installation_code=installation_code,
         )
 
+    # Waited for together, so that the robots boot side by side.
+    wait_for_all_robot_statuses(
+        backend_url, {robot_config.name: "Home" for robot_config in roster}
+    )
     _assert_robots_require_authentication(armada)
     armada.log_startup_info()
     return armada

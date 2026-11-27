@@ -74,12 +74,8 @@ def test_lockdown_of_one_plant_leaves_another_plant_alone(
     on_mission: IsarRobot = armada.robots[LOCKDOWN_DURING_MISSION]
     bystander: IsarRobot = armada.robots[BYSTANDER_ON_ANOTHER_PLANT]
 
-    idle_run: Dict = schedule_dummy_mission(
-        backend_url, idle.robot_id, idle.installation_code
-    )
-    interrupted_run: Dict = schedule_dummy_mission(
-        backend_url, on_mission.robot_id, on_mission.installation_code
-    )
+    idle_run: Dict = schedule_dummy_mission(backend_url, idle)
+    interrupted_run: Dict = schedule_dummy_mission(backend_url, on_mission)
 
     wait_for_mission_run_status(
         backend_url, idle_run["id"], "Successful", timeout=TIMEOUT_SECONDS
@@ -96,9 +92,7 @@ def test_lockdown_of_one_plant_leaves_another_plant_alone(
     send_all_robots_to_lockdown(backend_url, LOCKED_DOWN_PLANT.installation_code)
     # A robot caught by a lockdown holds its mission until release, so this
     # mission can only succeed if the bystander's plant is unaffected.
-    bystander_run: Dict = schedule_dummy_mission(
-        backend_url, bystander.robot_id, bystander.installation_code
-    )
+    bystander_run: Dict = schedule_dummy_mission(backend_url, bystander)
 
     wait_for_all_robot_statuses(
         backend_url,

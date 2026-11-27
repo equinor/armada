@@ -43,12 +43,8 @@ def test_operator_stops_a_running_and_a_paused_mission(
     running: IsarRobot = armada.robots[STOP_DURING_MISSION]
     paused: IsarRobot = armada.robots[STOP_WHILE_PAUSED]
 
-    running_run: Dict = schedule_dummy_mission(
-        backend_url, running.robot_id, running.installation_code
-    )
-    paused_run: Dict = schedule_dummy_mission(
-        backend_url, paused.robot_id, paused.installation_code
-    )
+    running_run: Dict = schedule_dummy_mission(backend_url, running)
+    paused_run: Dict = schedule_dummy_mission(backend_url, paused)
 
     for mission_run in (running_run, paused_run):
         wait_for_second_task_status_of_mission_run(
